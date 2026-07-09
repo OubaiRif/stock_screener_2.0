@@ -1,0 +1,32 @@
+# Personal data — never commit
+screener.db
+screener_*.db
+stocks_backup_*.db
+
+# Secrets
+.streamlit/secrets.toml
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Logs & runtime
+logs/
+*.log
+*.pid
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+*.save
+*.swp
+.vscode/
+.idea/
+
+# Personal CSVs
+History_for_Account*.csv

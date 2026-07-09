@@ -1,0 +1,41 @@
+# Stock Screener 2.0 — .gitignore
+
+# ── Personal data — NEVER commit these ────────────────────────────────────────
+screener.db
+*.db
+!demo_screener.db
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+.streamlit/secrets.toml
+
+# ── Python ────────────────────────────────────────────────────────────────────
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Logs & runtime ────────────────────────────────────────────────────────────
+logs/
+*.log
+*.pid
+
+# ── OS files ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor files ──────────────────────────────────────────────────────────────
+*.save
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# ── Personal CSVs ─────────────────────────────────────────────────────────────
+History_for_Account*.csv
+fidelity_*.csv
