@@ -1,12 +1,10 @@
 yfinance>=0.2.40
 pandas>=2.0
 numpy>=1.24
-pandas-ta==0.3.14b0
+pandas-ta==0.4.71b0
 requests>=2.31
 scikit-learn>=1.3
 xgboost>=2.0
-transformers>=4.30
-torch>=2.0
 streamlit>=1.35
 plotly>=5.22
 holidays>=0.46
