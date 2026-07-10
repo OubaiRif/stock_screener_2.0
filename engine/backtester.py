@@ -16,7 +16,12 @@ from datetime import date, datetime, timedelta
 
 import numpy as np
 import pandas as pd
-import pandas_ta as ta
+try:
+    import pandas_ta as ta
+    PANDAS_TA_AVAILABLE = True
+except ImportError:
+    ta = None
+    PANDAS_TA_AVAILABLE = False
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from engine.db import get_conn
