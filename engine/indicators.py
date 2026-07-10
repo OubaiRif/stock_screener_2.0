@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 
 def compute_indicators(ticker: str, df: pd.DataFrame = None) -> pd.DataFrame:
+    if not PANDAS_TA_AVAILABLE:
+        return df if df is not None else pd.DataFrame()
     """
     Compute all indicators for a ticker.
     If df is None, loads from DB. Returns df with indicator columns appended.
