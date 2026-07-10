@@ -60,6 +60,10 @@ def compute_signals_history(df: pd.DataFrame, strategy: str = "unassigned") -> p
     if df.empty or len(df) < 50:
         return pd.Series(dtype=float)
 
+    if not PANDAS_TA_AVAILABLE or ta is None:
+        logger.warning("pandas_ta not available — backtester returning empty signals")
+        return pd.Series(dtype=float)
+
     close  = df["Close"]
     high   = df["High"]
     low    = df["Low"]
@@ -67,6 +71,8 @@ def compute_signals_history(df: pd.DataFrame, strategy: str = "unassigned") -> p
 
     # Compute all indicators on full history — guard each call against short/empty series
     def _safe(fn, *args, **kwargs):
+        if fn is None:
+            return None
         try:
             result = fn(*args, **kwargs)
             return result if result is not None and (not hasattr(result, 'empty') or not result.empty) else None
@@ -455,6 +461,9 @@ def run_backtest(ticker: str, strategy: str = "unassigned",
         end = datetime.today().strftime("%Y-%m-%d")
 
     logger.info("Running backtest for %s (%s to %s)", ticker, start, end)
+
+    if not PANDAS_TA_AVAILABLE or ta is None:
+        return {"error": "Backtesting requires pandas_ta which is not available in the demo environment. Download the full app to run backtests locally."}
 
     df = load_price_history(ticker, start, end)
     if df.empty:
