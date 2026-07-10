@@ -6,7 +6,12 @@ import logging, sys, os
 from datetime import datetime
 
 import pandas as pd
-import pandas_ta as ta
+try:
+    import pandas_ta as ta
+    PANDAS_TA_AVAILABLE = True
+except ImportError:
+    ta = None
+    PANDAS_TA_AVAILABLE = False
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
