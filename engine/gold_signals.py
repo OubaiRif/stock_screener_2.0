@@ -6,6 +6,12 @@ import logging, sys, os
 from datetime import date, datetime, timedelta
 
 import pandas as pd
+try:
+    import pandas_ta as ta
+    PANDAS_TA_AVAILABLE = True
+except ImportError:
+    ta = None
+    PANDAS_TA_AVAILABLE = False
 import yfinance as yf
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
