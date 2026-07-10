@@ -22,6 +22,8 @@ from engine.etf_signals import (refresh_etf_signals, get_latest_macro,
                                  compute_etf_signal, _momentum, YF_MACRO, FRED_SERIES)
 from utils import (score_color, get_et_time, is_market_hours, BULL, BEAR, NEUT, demo_banner)
 
+from config import DEMO_MODE
+
 setup_page("ETF Screener", "📊", active_page="2_ETF_Screener")
 
 
@@ -352,7 +354,8 @@ for cat_key, cat_label in CATEGORY_ORDER:
         with hcol4:
             st.markdown("**Sentiment**")
             if not sent.get("available"):
-                demo_banner("🤖", "Sentiment N/A in demo",
+                if DEMO_MODE:
+                    demo_banner("🤖", "Sentiment N/A in demo",
                             "FinBERT is rate-limited on the free HuggingFace tier.")
             sent_color = BULL if sent_sc > 0.2 else (BEAR if sent_sc < -0.2 else NEUT)
             st.markdown(

@@ -16,6 +16,7 @@ from engine.sentiment      import get_latest_sentiment
 from engine.predictor      import predict
 from utils import BULL, BEAR, NEUT, demo_banner
 from engine.prices import get_extended_hours_price, format_price_label, format_change_html
+from config import DEMO_MODE
 
 setup_page("Trading Assistant", "🎯", active_page="5_Trading_Assistant")
 
@@ -205,9 +206,10 @@ def check_exit(ind, pred, entry_price, target_price, stop_price, entry_date_str)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 st.markdown("# 🎯 Trading Assistant")
-demo_banner("📋", "Demo limitations on this page",
-            "• <strong>Exit checklist</strong>: requires a live position with entry price in the journal — shows defaults if journal is empty. "
-            "• <strong>Price &amp; ATR</strong>: fetched via yfinance; may show N/A on cloud due to rate limits — run locally for real-time data.")
+if DEMO_MODE:
+    demo_banner("📋", "Demo limitations on this page",
+                "• <strong>Exit checklist</strong>: requires a live position with entry price in the journal — shows defaults if journal is empty. "
+                "• <strong>Price &amp; ATR</strong>: fetched via yfinance; may show N/A on cloud due to rate limits — run locally for real-time data.")
 st.markdown("---")
 
 # ── Section 1: Market Pulse ───────────────────────────────────────────────────
@@ -229,28 +231,32 @@ st.markdown(
 
 st.markdown("---")
 
-# ── Section 2: Entry Analyzer ─────────────────────────────────────────────────
-st.markdown("### 🔍 Entry Analyzer")
+# ── Section 2: Trade Analyzer ─────────────────────────────────────────────────
+st.markdown("### 🔍 Trade Analyzer")
 
 # Pre-load ticker if coming from Swing page
 _preload = st.session_state.pop("ta_ticker", None)
-col_search, col_btn = st.columns([3, 1])
-with col_search:
-    ticker_input = st.text_input("", placeholder="Type ticker e.g. PDYN and press Enter",
+
+# ── Step 1 inputs ─────────────────────────────────────────────────────────────
+col_ticker, col_mode, col_btn = st.columns([3, 2, 1])
+with col_ticker:
+    ticker_input = st.text_input("", placeholder="Ticker e.g. PDYN",
                                   label_visibility="collapsed", key="ta_search",
                                   value=_preload or "").upper().strip()
+with col_mode:
+    trade_mode = st.radio("", ["📥 Buy", "📤 Sell"],
+                          horizontal=True, key="ta_mode",
+                          label_visibility="collapsed")
 with col_btn:
     st.markdown("<div style='margin-top:4px'>", unsafe_allow_html=True)
     analyze = st.button("Analyze", use_container_width=True, key="ta_analyze")
     st.markdown("</div>", unsafe_allow_html=True)
 
-# Auto-trigger analysis if pre-loaded
 if _preload and not ticker_input:
     ticker_input = _preload
 
 if ticker_input:
-    with st.spinner(f"Analyzing {ticker_input}…"):
-        # Fetch data if not in DB
+    with st.spinner(f"Analyzing {ticker_input}\u2026"):
         conn = get_conn()
         row  = conn.execute("SELECT ticker FROM stocks WHERE ticker=?",
                             (ticker_input,)).fetchone()
@@ -263,14 +269,18 @@ if ticker_input:
                 fetch_fundamentals(ticker_input)
                 refresh_indicators(ticker_input)
             except Exception as e:
-                st.error(f"Could not fetch data for {ticker_input}: {e}")
+                st.error(
+                    f"Could not fetch data for **{ticker_input}**. "
+                    f"Please check for misspelling — ticker symbols are case-sensitive "
+                    f"(e.g. AAPL, TSLA, PDYN). If the ticker is correct, the data "
+                    f"source may be temporarily unavailable."
+                )
                 st.stop()
 
         ind  = get_latest_indicators(ticker_input)
         sent = get_latest_sentiment(ticker_input)
         pred = predict(ticker_input)
 
-        # Get current price from price_history
         conn2 = get_conn()
         ph = conn2.execute(
             "SELECT close FROM price_history WHERE ticker=? ORDER BY date DESC LIMIT 1",
@@ -281,23 +291,27 @@ if ticker_input:
             ind["close"] = ph["close"]
 
         if not ind:
-            st.warning(f"No indicator data for {ticker_input}. Try refreshing from Stock Detail.")
+            st.error(
+                f"No data found for **{ticker_input}**. "
+                f"Please check for misspelling — e.g. AAPL, TSLA, MARA. "
+                f"If the ticker is correct, try searching it on Stock Detail first to populate the database."
+            )
             st.stop()
 
-        # ── Extended hours price banner ────────────────────────────────────
+        # Extended hours price banner
         _px = get_extended_hours_price(ticker_input)
         if not _px.get("error"):
-            _label    = format_price_label(_px)
-            _price    = _px.get("price")
-            _regular  = _px.get("regular")
+            _label   = format_price_label(_px)
+            _price   = _px.get("price")
+            _regular = _px.get("regular")
             _chg_html = ""
             if _px.get("price_type") == "pre_market" and _px.get("pre_change") is not None:
                 _chg_html = format_change_html(_px["pre_change"], _px["pre_change_pct"])
             elif _px.get("price_type") == "post_market" and _px.get("post_change") is not None:
                 _chg_html = format_change_html(_px["post_change"], _px["post_change_pct"])
             if _px.get("price_type") in ("pre_market", "post_market"):
-                _bg   = "#fffbe6" if _px["price_type"] == "pre_market" else "#f0f4ff"
-                _bd   = "#c8a000" if _px["price_type"] == "pre_market" else "#0066cc"
+                _bg  = "#fffbe6" if _px["price_type"] == "pre_market" else "#f0f4ff"
+                _bd  = "#c8a000" if _px["price_type"] == "pre_market" else "#0066cc"
                 _time = (_px.get("pre_market_time") or _px.get("post_market_time"))
                 _ts   = _time.strftime("%H:%M") if _time else ""
                 st.markdown(
@@ -311,7 +325,6 @@ if ticker_input:
                     + (f'<span style="font-size:.8em;color:#555;margin-left:10px">Regular close: ${_regular:.2f}</span>' if _regular else '')
                     + '</div>',
                     unsafe_allow_html=True)
-            # Use extended hours price as current for calculator if available
             if _price and _px.get("price_type") in ("pre_market", "post_market"):
                 ind["close"] = _price
 
@@ -321,96 +334,89 @@ if ticker_input:
         current = ind.get("close") or 0
         atr     = ind.get("atr") or 0
 
-        # Setup verdict
-        st.markdown(
-            f'<div style="background:#f4f6fb;border-radius:10px;padding:16px 22px;'
-            f'border-left:4px solid {q_color};margin-bottom:1rem">'
-            f'<div style="font-size:1.2em;font-weight:700;color:{q_color}">'
-            f'{quality + " Setup" if quality != "No Setup" else "No Setup"} — {passed}/{len(checks)} conditions met</div>'
-            f'<div style="font-size:0.85em;color:#666;margin-top:4px">'
-            f'{ticker_input} · Current Price: ${current:.2f} · ATR: ${atr:.2f}</div>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
+        # ── STEP 1: Left card (setup + metrics) | Right card (checklist) ────
+        card_left, card_right = st.columns(2)
 
-        # ── Entry checklist | Exit checklist side by side ────────────────────
-        cl_left, cl_right = st.columns(2)
+        with card_left:
+            _mode_label = "Entry Analysis" if trade_mode == "📥 Buy" else "Exit Analysis (Preliminary)"
+            st.markdown(
+                f'<div style="background:#f4f6fb;border-radius:10px;padding:16px 20px;'
+                f'border-left:4px solid {q_color};">'
+                f'<div style="font-size:0.72em;text-transform:uppercase;letter-spacing:.06em;color:#888;margin-bottom:6px">{_mode_label}</div>'
+                f'<div style="font-size:1.2em;font-weight:700;color:{q_color};margin-bottom:2px">'
+                f'{quality + " Setup" if quality != "No Setup" else "No Setup"}</div>'
+                f'<div style="font-size:0.83em;color:#555;margin-bottom:12px">{passed}/{len(checks)} conditions met</div>'
+                f'<div style="border-top:1px solid #e0e4ee;padding-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+                f'<div><div style="font-size:0.7em;color:#888;text-transform:uppercase">Ticker</div>'
+                f'<div style="font-weight:600;font-family:IBM Plex Mono,monospace">{ticker_input}</div></div>'
+                f'<div><div style="font-size:0.7em;color:#888;text-transform:uppercase">Price</div>'
+                f'<div style="font-weight:600;font-family:IBM Plex Mono,monospace">${current:.2f}</div></div>'
+                f'<div><div style="font-size:0.7em;color:#888;text-transform:uppercase">ATR</div>'
+                f'<div style="font-weight:600;font-family:IBM Plex Mono,monospace">${atr:.2f}</div></div>'
+                f'<div><div style="font-size:0.7em;color:#888;text-transform:uppercase">Mode</div>'
+                f'<div style="font-weight:600">{trade_mode}</div></div>'
+                f'</div></div>',
+                unsafe_allow_html=True
+            )
 
-        with cl_left:
-            st.markdown("**🔍 Entry Checklist**")
-            for c in checks:
-                icon  = "✅" if c["pass"] else "❌"
-                color = BULL if c["pass"] else BEAR
-                st.markdown(
-                    f'<div style="display:flex;justify-content:space-between;align-items:center;'
-                    f'padding:6px 0;border-bottom:1px solid #e0e4ee">'
-                    f'<span style="font-size:0.88em">{icon} {c["label"]}</span>'
-                    f'<span style="font-family:IBM Plex Mono,monospace;font-size:0.85em;color:{color};font-weight:600">{c["value"]}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-
-        with cl_right:
-            st.markdown("**🚪 Exit Checklist**")
-            # Need entry_date and prices for exit — use defaults until calc runs
-            _entry_date_tmp = date.today().isoformat()
-            _stop_tmp  = round(current - atr, 2) if atr else 0
-            _target_tmp= round(current + atr * 1.5, 2) if atr else 0
-            exit_checks_preview = check_exit(ind, pred, current, _target_tmp,
-                                             _stop_tmp, _entry_date_tmp)
-            for ec in exit_checks_preview:
-                is_stop  = ec["method"] == "Stop Loss"
-                icon     = "🔴" if (is_stop and ec["pass"]) else ("✅" if (ec["pass"] and not is_stop) else "⏳")
-                bg_color = "#fff0f0" if (is_stop and ec["pass"]) else ("#f0fff8" if ec["pass"] else "#f4f6fb")
-                bd_color = BEAR if (is_stop and ec["pass"]) else (BULL if ec["pass"] else "#dde1ea")
-                st.markdown(
-                    f'<div style="background:{bg_color};border-radius:6px;padding:8px 12px;'
-                    f'border-left:3px solid {bd_color};margin-bottom:6px">'
-                    f'<div style="font-size:0.72em;text-transform:uppercase;letter-spacing:0.06em;color:#888">{ec["method"]}</div>'
-                    f'<div style="font-size:0.85em;font-weight:600">{ec["action"]}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
+        with card_right:
+            _cl_title = "🔍 Entry Checklist" if trade_mode == "📥 Buy" else "🚪 Exit Checklist"
+            _cl_note  = "" if trade_mode == "📥 Buy" else (
+                '<div style="font-size:0.78em;color:#888;margin-bottom:6px">'
+                'Preliminary — based on current indicators. Enter position details in the calculator for precise signals.</div>'
+            )
+            _rows = "".join(
+                f'<div style="display:flex;justify-content:space-between;align-items:center;'
+                f'padding:5px 0;border-bottom:1px solid #e0e4ee;">'
+                f'<span style="font-size:0.83em">{"✅" if c["pass"] else "❌"} {c["label"]}</span>'
+                f'<span style="font-family:IBM Plex Mono,monospace;font-size:0.82em;'
+                f'color:{"#007a4d" if c["pass"] else "#cc2200"};font-weight:600">{c["value"]}</span>'
+                f'</div>'
+                for c in checks
+            )
+            st.markdown(
+                f'<div style="background:#f4f6fb;border-radius:10px;padding:16px 20px;">'
+                f'<div style="font-size:0.72em;text-transform:uppercase;letter-spacing:.06em;color:#888;margin-bottom:6px">{_cl_title}</div>'
+                f'{_cl_note}{_rows}</div>',
+                unsafe_allow_html=True
+            )
 
         st.markdown("---")
 
-        # ── Trade Calculator with Entry/Exit toggle ────────────────────────────
-        st.markdown("### 🧮 Trade Calculator")
-        calc_mode = st.radio("Mode", ["📥 Entry", "📤 Exit"],
-                             horizontal=True, key="ta_calc_mode")
+        # ── STEP 2: Calculator ────────────────────────────────────────────────
+        st.markdown("### \U0001f9ee Calculator")
 
-        calc_left, calc_right = st.columns(2)
+        if current > 0 and atr > 0:
+            calc_left, calc_right = st.columns(2)
+            with calc_left:
+                st.markdown("**Inputs**")
+                if trade_mode == "\U0001f4e5 Buy":
+                    dollar_amount = st.number_input("Dollar amount ($)", min_value=0.0,
+                                                    value=500.0, step=50.0, key="ta_dollars")
+                    stop_mult   = st.selectbox("Stop loss (\u00d7 ATR)",
+                                               [0.75, 1.0, 1.25, 1.5], index=1, key="ta_stop_mult")
+                    target_mult = st.selectbox("Target (\u00d7 ATR)",
+                                               [1.0, 1.5, 2.0, 2.5, 3.0], index=1, key="ta_target_mult")
+                    entry_date  = st.date_input("Entry date", value=date.today(), key="ta_entry_date")
+                else:
+                    shares_held = st.number_input("Shares held", min_value=0, value=100,
+                                                   step=1, key="ta_exit_shares")
+                    entry_price = st.number_input("Entry price ($)", min_value=0.0,
+                                                   value=float(current), step=0.01,
+                                                   key="ta_exit_entry")
+                    stop_mult   = st.selectbox("Stop loss (\u00d7 ATR)",
+                                               [0.75, 1.0, 1.25, 1.5], index=1, key="ta_stop_mult_ex")
+                    target_mult = st.selectbox("Target (\u00d7 ATR)",
+                                               [1.0, 1.5, 2.0, 2.5, 3.0], index=1, key="ta_target_mult_ex")
+                    entry_date  = st.date_input("Entry date", value=date.today(), key="ta_entry_date_ex")
 
-        with calc_left:
-            st.markdown("**Inputs**")
-            if calc_mode == "📥 Entry":
-                # Use extended hours price as default if available
-                _default_entry = float(_px.get("price") or current) if "_px" in dir() else float(current)
-                dollar_amount = st.number_input("Dollar amount ($)", min_value=0.0,
-                                                value=500.0, step=50.0, key="ta_dollars")
-                stop_mult   = st.selectbox("Stop loss multiplier (× ATR)",
-                                           [0.75, 1.0, 1.25, 1.5], index=1, key="ta_stop_mult")
-                target_mult = st.selectbox("Target multiplier (× ATR)",
-                                           [1.0, 1.5, 2.0, 2.5, 3.0], index=1, key="ta_target_mult")
-                entry_date  = st.date_input("Entry date", value=date.today(), key="ta_entry_date")
-            else:
-                shares_held  = st.number_input("Shares held", min_value=0, value=100, step=1, key="ta_exit_shares")
-                entry_price  = st.number_input("Entry price ($)", min_value=0.0,
-                                               value=float(current) if current else 0.0,
-                                               step=0.01, key="ta_exit_entry")
-                stop_mult   = st.selectbox("Stop loss multiplier (× ATR)",
-                                           [0.75, 1.0, 1.25, 1.5], index=1, key="ta_stop_mult_ex")
-                target_mult = st.selectbox("Target multiplier (× ATR)",
-                                           [1.0, 1.5, 2.0, 2.5, 3.0], index=1, key="ta_target_mult_ex")
-                entry_date  = st.date_input("Entry date", value=date.today(), key="ta_entry_date_ex")
+            with calc_right:
+                st.markdown("**Results**")
+                _basis       = entry_price if trade_mode == "📤 Sell" else current
+                stop_price   = round(_basis - atr * stop_mult, 2)
+                target_price = round(_basis + atr * target_mult, 2)
 
-        with calc_right:
-            st.markdown("**Results**")
-            if current > 0 and atr > 0:
-                stop_price   = round(current - atr * stop_mult, 2)
-                target_price = round(current + atr * target_mult, 2)
-
-                if calc_mode == "📥 Entry":
+                if trade_mode == "\U0001f4e5 Buy":
                     shares      = int(dollar_amount / current) if dollar_amount > 0 else 0
                     actual_cost = shares * current
                     max_loss    = round(shares * (current - stop_price), 2)
@@ -435,20 +441,20 @@ if ticker_input:
                         f'<div><div style="font-size:0.72em;color:#007a4d;text-transform:uppercase">Target</div>'
                         f'<div style="font-size:1.2em;font-weight:700;font-family:IBM Plex Mono,monospace;color:{BULL}">${target_price:.2f}</div>'
                         f'<div style="font-size:0.78em;color:{BULL}">Max gain: ${max_gain:.2f}</div></div>'
-                        f'</div></div>', unsafe_allow_html=True)
+                        f'</div></div>',
+                        unsafe_allow_html=True)
                 else:
-                    # Exit mode
-                    cost_basis   = shares_held * entry_price
-                    current_val  = shares_held * current
-                    unrealized   = current_val - cost_basis
-                    unreal_pct   = (unrealized / cost_basis * 100) if cost_basis else 0
-                    pnl_c        = BULL if unrealized >= 0 else BEAR
-                    pnl_a        = "▲" if unrealized >= 0 else "▼"
-                    dist_stop    = current - stop_price
-                    dist_target  = target_price - current
-                    exit_checks  = check_exit(ind, pred, current, target_price,
-                                              stop_price, entry_date.isoformat())
-                    stop_hit     = any(ec["method"] == "Stop Loss" and ec["pass"] for ec in exit_checks)
+                    cost_basis  = shares_held * entry_price
+                    current_val = shares_held * current
+                    unrealized  = current_val - cost_basis
+                    unreal_pct  = (unrealized / cost_basis * 100) if cost_basis else 0
+                    pnl_c       = BULL if unrealized >= 0 else BEAR
+                    pnl_a       = "\u25b2" if unrealized >= 0 else "\u25bc"
+                    dist_stop   = current - stop_price
+                    dist_target = target_price - current
+                    exit_checks = check_exit(ind, pred, entry_price, target_price,
+                                             stop_price, entry_date.isoformat())
+                    stop_hit    = any(ec["method"] == "Stop Loss" and ec["pass"] for ec in exit_checks)
                     st.markdown(
                         f'<div style="background:#f4f6fb;border-radius:10px;padding:16px 18px">'
                         f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'
@@ -463,12 +469,24 @@ if ticker_input:
                         f'<div style="font-size:1.2em;font-weight:700;font-family:IBM Plex Mono,monospace;color:{BULL}">${target_price:.2f}</div>'
                         f'<div style="font-size:0.78em;color:{BULL}">${dist_target:.2f} away</div></div>'
                         f'<div><div style="font-size:0.72em;text-transform:uppercase;color:#666">Recommendation</div>'
-                        f'<div style="font-size:1.0em;font-weight:700;color:{"#cc2200" if stop_hit else BULL}">{"🔴 EXIT — Stop Hit" if stop_hit else "⏳ Hold Position"}</div></div>'
-                        f'</div></div>', unsafe_allow_html=True)
-            else:
-                demo_banner("⚠️", "Price / ATR not available",
-                            "yfinance rate-limits on Streamlit Cloud. Refresh the page or run the app locally for live price and ATR data.")
+                        f'<div style="font-size:1.0em;font-weight:700;color:{"#cc2200" if stop_hit else BULL}">{"\U0001f534 EXIT \u2014 Stop Hit" if stop_hit else "\u23f3 Hold Position"}</div></div>'
+                        f'</div></div>',
+                        unsafe_allow_html=True)
 
+
+        else:
+            if DEMO_MODE:
+                demo_banner("\u26a0\ufe0f", "Price / ATR not available",
+                            "yfinance rate-limits on Streamlit Cloud. Refresh or run locally for live data.")
+            else:
+                st.info("Price or ATR data unavailable. Try refreshing from Stock Detail.")
+
+        # Detail button
+        st.markdown("---")
+        if st.button(f"\U0001f4ca View Full Details for {ticker_input}",
+                     use_container_width=True, key="ta_detail_btn"):
+            st.session_state["detail_ticker"] = ticker_input
+            st.switch_page("pages/1_Stock_Detail.py")
 
 
 render_footer()

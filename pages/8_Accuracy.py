@@ -15,6 +15,8 @@ from engine.db       import get_conn, get_watchlist
 from engine.accuracy import get_accuracy_summary, get_recent_log, score_predictions
 from utils           import score_color, BULL, BEAR, NEUT, demo_banner
 
+from config import DEMO_MODE
+
 setup_page("Accuracy", "🎯", active_page="8_Accuracy")
 
 st.markdown("""<style>
@@ -92,7 +94,8 @@ def get_finbert_comparison():
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("# 🎯 Prediction Accuracy")
-demo_banner("📊", "Many tickers show No Data in demo",
+if DEMO_MODE:
+    demo_banner("📊", "Many tickers show No Data in demo",
             "Accuracy scores are computed nightly. Tickers show No Data if they have "
             "&lt;60 bars of price history or weren't in the nightly batch yet. "
             "Coverage grows automatically as the DB accumulates runs.")

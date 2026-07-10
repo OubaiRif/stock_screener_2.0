@@ -20,6 +20,8 @@ from engine.prices import get_extended_hours_price, format_change_html
 from utils import (score_color, score_bar_html, strategy_label,
                    get_et_time, is_market_hours, BULL, BEAR, NEUT, demo_banner)
 
+from config import DEMO_MODE
+
 setup_page("Swing Trades", "⚡", active_page="3_Swing_Trades")
 
 
@@ -199,7 +201,8 @@ for r in rows:
         with col3:
             st.markdown(f'**Entry Checklist** — <span style="color:{entry_c}">{n_passed}/5 passed</span>',
                         unsafe_allow_html=True)
-            demo_banner("🔄", "Resets on refresh",
+            if DEMO_MODE:
+                demo_banner("🔄", "Resets on refresh",
                         "Checklist state is session-only — ticked boxes clear on browser refresh.")
             if checks:
                 for label, ok, val in checks:

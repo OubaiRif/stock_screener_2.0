@@ -208,7 +208,11 @@ df_gold = get_gold_from_db(days=365)
 if df_gold.empty:
     df_gold = fetch_gold_history(days=365)
 
-swing  = get_swing_signal_with_cache(df_gold if not df_gold.empty else None)
+from config import DEMO_MODE
+if DEMO_MODE:
+    swing = get_swing_signal_with_cache(df_gold if not df_gold.empty else None)
+else:
+    swing = compute_swing_signal(df_gold) if not df_gold.empty else {}
 macro_sig = compute_macro_hold_signal(macro) if macro else {}
 pnl    = compute_pnl(position, cur_price) if cur_price else {}
 recs   = get_position_aware_recommendations(swing, macro_sig, pnl) if swing and macro_sig else {}
@@ -293,7 +297,7 @@ with swing_col:
             f'<div class="sig-big" style="color:{sig_color}">'
             f'{sig_arrow} {swing["signal"]}</div>'
             f'<span style="color:#333;font-size:.85em">'
-            f'{swing["score"]}/100 · {swing["confidence"]:.0f}% confidence</span>',
+            f'{swing["score"]}/100 · {swing.get("confidence", 0):.0f}% confidence</span>',
             unsafe_allow_html=True)
 
         if swing.get("entry_low"):
@@ -434,7 +438,8 @@ st.markdown("---")
 
 # ── SECTION 3: Macro Hold Signal ─────────────────────────────────────────────
 st.markdown("### 📊 Macro Hold Signal")
-demo_banner("📡", "Macro signal may be partial in demo",
+if DEMO_MODE:
+    demo_banner("📡", "Macro signal may be partial in demo",
             "Full signal needs live FRED data (real rates, DXY, M2) fetched nightly. "
             "On cloud some FRED series may be unavailable; signal reflects only indicators that loaded.")
 
