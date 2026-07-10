@@ -171,10 +171,7 @@ def compute_swing_signal(df: pd.DataFrame) -> dict:
     if df.empty or len(df) < 30:
         return {"signal": "INSUFFICIENT DATA", "score": 50}
 
-    try:
-        import pandas_ta as ta
-    except ImportError:
-        ta = None
+
 
     close  = df["Close"] if "Close" in df.columns else df["close"]
     high   = df["High"]  if "High"  in df.columns else close
