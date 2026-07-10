@@ -159,6 +159,10 @@ def get_gold_from_db(days: int = 365) -> pd.DataFrame:
 # ── Swing trade signal ────────────────────────────────────────────────────────
 
 def compute_swing_signal(df: pd.DataFrame) -> dict:
+    if df is None or (hasattr(df, 'empty') and df.empty):
+        return {"signal": "NO DATA", "score": 50}
+    if ta is None:
+        return {"signal": "HOLD", "score": 50, "note": "indicators unavailable in demo mode"}
     """
     Compute swing trade signal from spot gold technicals.
     df: DataFrame with Close column indexed by date.
