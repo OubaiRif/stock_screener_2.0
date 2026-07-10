@@ -30,20 +30,13 @@ from config import STRATEGIES, DEMO_MODE, DB_PATH
 
 # ── Auto-generate demo DB on Streamlit Cloud if missing ───────────────────────
 if DEMO_MODE and not os.path.exists(DB_PATH):
-    with st.spinner("Setting up demo environment…"):
+    with st.spinner("Setting up demo environment… (first run only, ~60 seconds)"):
         try:
-            import subprocess
-            _script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "demo_db.py")
-            result  = subprocess.run(
-                ["python3", _script],
-                capture_output=True, text=True, timeout=120
-            )
-            if result.returncode != 0:
-                st.error(f"Demo setup failed: {result.stderr[-500:]}")
-                st.stop()
+            import demo_db
+            demo_db.main()
             st.rerun()
         except Exception as e:
-            st.error(f"Could not initialise demo database: {e}")
+            st.error(f"Demo setup failed: {e}")
             st.stop()
 
 setup_page("Stock Screener 2.0", "📈", active_page="dashboard")
