@@ -168,7 +168,10 @@ def compute_swing_signal(df: pd.DataFrame) -> dict:
         return {"signal": "INSUFFICIENT DATA", "score": 50}
 
     try:
-    import pandas_ta as ta
+    try:
+        import pandas_ta as ta
+    except ImportError:
+        ta = None
     PANDAS_TA_AVAILABLE = True
 except ImportError:
     ta = None
