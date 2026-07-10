@@ -375,10 +375,16 @@ if not df_gold.empty:
         df_chart.rename(columns={"close":"Close"}, inplace=True)
 
     if len(df_chart) >= 20:
-        df_chart["EMA_20"]  = ta.ema(df_chart["Close"], length=20)
-        df_chart["EMA_50"]  = ta.ema(df_chart["Close"], length=50)
-        df_chart["EMA_200"] = ta.ema(df_chart["Close"], length=200)
-        bb = ta.bbands(df_chart["Close"], length=20, std=2.0)
+        if PANDAS_TA_AVAILABLE:
+            df_chart["EMA_20"]  = ta.ema(df_chart["Close"], length=20)
+            df_chart["EMA_50"]  = ta.ema(df_chart["Close"], length=50)
+            df_chart["EMA_200"] = ta.ema(df_chart["Close"], length=200)
+            bb = ta.bbands(df_chart["Close"], length=20, std=2.0)
+        else:
+            df_chart["EMA_20"]  = None
+            df_chart["EMA_50"]  = None
+            df_chart["EMA_200"] = None
+            bb = None
         if bb is not None:
             df_chart["BB_Upper"] = bb.iloc[:,2]
             df_chart["BB_Lower"] = bb.iloc[:,0]
