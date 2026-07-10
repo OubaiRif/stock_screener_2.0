@@ -188,6 +188,42 @@ def main():
     conn.commit()
     conn.close()
 
+    # ── Seed gold_swing_cache so cloud demo has a starting signal ─────────────
+    print("\n[+] Seeding gold_swing_cache...")
+    try:
+        import json
+        conn_demo = get_conn(DEMO_DB)
+        conn_demo.execute("""
+            CREATE TABLE IF NOT EXISTS gold_swing_cache (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                computed_at TEXT NOT NULL,
+                signal      TEXT,
+                score       REAL,
+                confidence  REAL,
+                payload     TEXT
+            )
+        """)
+        seed_payload = {
+            "signal": "HOLD",
+            "score": 58,
+            "confidence": 0.58,
+            "bull": ["Price above 200-day EMA — long-term uptrend intact",
+                     "RSI neutral (52.3) — no extreme reading"],
+            "bear": ["MACD slightly bearish — mild downward pressure"],
+            "note": "Seeded by demo_db.py — updates after first nightly run"
+        }
+        conn_demo.execute(
+            "INSERT INTO gold_swing_cache (computed_at, signal, score, confidence, payload) "
+            "VALUES (datetime('now'), ?, ?, ?, ?)",
+            (seed_payload["signal"], seed_payload["score"],
+             seed_payload["confidence"], json.dumps(seed_payload))
+        )
+        conn_demo.commit()
+        conn_demo.close()
+        print("   ✓ gold_swing_cache seeded")
+    except Exception as e:
+        print(f"   ⚠ Could not seed gold_swing_cache: {e}")
+
     # Final size check
     size_mb = os.path.getsize(DEMO_DB) / 1024 / 1024
     print(f"\n{'='*60}")

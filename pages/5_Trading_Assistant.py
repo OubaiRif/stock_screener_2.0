@@ -14,7 +14,7 @@ from engine.indicators     import get_latest_indicators, refresh_indicators
 from engine.fetcher        import fetch_daily_history, fetch_fundamentals
 from engine.sentiment      import get_latest_sentiment
 from engine.predictor      import predict
-from utils import BULL, BEAR, NEUT
+from utils import BULL, BEAR, NEUT, demo_banner
 from engine.prices import get_extended_hours_price, format_price_label, format_change_html
 
 setup_page("Trading Assistant", "🎯", active_page="5_Trading_Assistant")
@@ -205,6 +205,9 @@ def check_exit(ind, pred, entry_price, target_price, stop_price, entry_date_str)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 st.markdown("# 🎯 Trading Assistant")
+demo_banner("📋", "Demo limitations on this page",
+            "• <strong>Exit checklist</strong>: requires a live position with entry price in the journal — shows defaults if journal is empty. "
+            "• <strong>Price &amp; ATR</strong>: fetched via yfinance; may show N/A on cloud due to rate limits — run locally for real-time data.")
 st.markdown("---")
 
 # ── Section 1: Market Pulse ───────────────────────────────────────────────────
@@ -323,7 +326,7 @@ if ticker_input:
             f'<div style="background:#f4f6fb;border-radius:10px;padding:16px 22px;'
             f'border-left:4px solid {q_color};margin-bottom:1rem">'
             f'<div style="font-size:1.2em;font-weight:700;color:{q_color}">'
-            f'{quality} Setup — {passed}/{len(checks)} conditions met</div>'
+            f'{quality + " Setup" if quality != "No Setup" else "No Setup"} — {passed}/{len(checks)} conditions met</div>'
             f'<div style="font-size:0.85em;color:#666;margin-top:4px">'
             f'{ticker_input} · Current Price: ${current:.2f} · ATR: ${atr:.2f}</div>'
             f'</div>',
@@ -463,7 +466,8 @@ if ticker_input:
                         f'<div style="font-size:1.0em;font-weight:700;color:{"#cc2200" if stop_hit else BULL}">{"🔴 EXIT — Stop Hit" if stop_hit else "⏳ Hold Position"}</div></div>'
                         f'</div></div>', unsafe_allow_html=True)
             else:
-                st.info("No price/ATR data available.")
+                demo_banner("⚠️", "Price / ATR not available",
+                            "yfinance rate-limits on Streamlit Cloud. Refresh the page or run the app locally for live price and ATR data.")
 
 
 

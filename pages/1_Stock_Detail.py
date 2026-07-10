@@ -23,7 +23,7 @@ from engine.indicators import compute_indicators, get_latest_indicators, refresh
 from engine.predictor  import predict
 from engine.sentiment  import get_latest_sentiment, get_headlines
 from utils import (score_color, strategy_label, get_et_time, is_market_hours,
-                   BULL, BEAR, NEUT, move_html)
+                   BULL, BEAR, NEUT, move_html, demo_banner)
 
 setup_page("Stock Detail", "📊", active_page="1_Stock_Detail")
 
@@ -475,6 +475,10 @@ with sent_col:
     sent = get_latest_sentiment(ticker)
     st.markdown('<div class="sentiment-card" style="padding-top:14px">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">Sentiment</div>', unsafe_allow_html=True)
+    if not sent["available"]:
+        demo_banner("🤖", "Sentiment unavailable in demo",
+                    "FinBERT requires the HuggingFace Inference API — rate-limited on the free tier. "
+                    "Works locally with a paid HF token.")
     if sent["available"]:
         sc = sent["avg_score"]
         c  = BULL if sc>0.2 else (BEAR if sc<-0.2 else NEUT)

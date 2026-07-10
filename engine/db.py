@@ -215,6 +215,16 @@ def init_db() -> None:
         logged_at       TEXT DEFAULT (datetime('now'))
     )""")
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS gold_swing_cache (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        computed_at TEXT NOT NULL,
+        signal      TEXT,
+        score       REAL,
+        confidence  REAL,
+        payload     TEXT
+    )""")
+
     conn.commit()
     conn.close()
     logger.info("Database initialized at %s", DB_PATH)

@@ -328,3 +328,24 @@ def inject_css():
 
 # Keep for backwards compat
 SHARED_CSS = _CSS
+
+
+# ── Demo limitation banners (Fixes 5-9) ──────────────────────────────────────
+
+def demo_banner(icon: str, title: str, body: str):
+    """Render a styled info banner for demo limitations."""
+    import streamlit as st
+    st.html(f"""
+    <div style="
+        background:rgba(59,130,246,0.07);
+        border:1px solid rgba(59,130,246,0.3);
+        border-radius:8px;
+        padding:0.65rem 1rem;
+        margin-bottom:1rem;
+        display:flex;gap:0.75rem;align-items:flex-start;">
+      <span style="font-size:1.15rem;line-height:1.4">{icon}</span>
+      <div>
+        <strong style="color:#60a5fa">{title}</strong>
+        <div style="color:#94a3b8;font-size:0.83rem;margin-top:0.15rem">{body}</div>
+      </div>
+    </div>""")

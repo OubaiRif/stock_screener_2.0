@@ -65,15 +65,22 @@ def compute_signals_history(df: pd.DataFrame, strategy: str = "unassigned") -> p
     low    = df["Low"]
     volume = df["Volume"]
 
-    # Compute all indicators on full history
-    rsi     = ta.rsi(close, length=14)
-    macd_df = ta.macd(close, fast=12, slow=26, signal=9)
-    ema_20  = ta.ema(close, length=20)
-    ema_50  = ta.ema(close, length=50)
-    ema_200 = ta.ema(close, length=200)
-    bb      = ta.bbands(close, length=20, std=2.0)
-    atr     = ta.atr(high, low, close, length=14)
-    obv     = ta.obv(close, volume)
+    # Compute all indicators on full history — guard each call against short/empty series
+    def _safe(fn, *args, **kwargs):
+        try:
+            result = fn(*args, **kwargs)
+            return result if result is not None and (not hasattr(result, 'empty') or not result.empty) else None
+        except Exception:
+            return None
+
+    rsi     = _safe(ta.rsi,    close,            length=14)
+    macd_df = _safe(ta.macd,   close,            fast=12, slow=26, signal=9)
+    ema_20  = _safe(ta.ema,    close,            length=20)
+    ema_50  = _safe(ta.ema,    close,            length=50)
+    ema_200 = _safe(ta.ema,    close,            length=200)
+    bb      = _safe(ta.bbands, close,            length=20, std=2.0)
+    atr     = _safe(ta.atr,    high, low, close, length=14)
+    obv     = _safe(ta.obv,    close, volume)
 
     # Extract MACD columns by name
     macd_val, macd_sig = None, None

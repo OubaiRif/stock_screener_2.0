@@ -3,8 +3,24 @@ engine/prices.py — Unified price fetching for Stock Screener 2.0.
 Provides regular, pre-market, and post-market prices via yfinance.
 All pages should import from here rather than duplicating yf calls.
 """
+import re
 from datetime import datetime
 from typing import Optional
+
+
+def _clean_num(raw) -> Optional[float]:
+    """Strip HTML tags yfinance occasionally injects, return float or None."""
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        import math
+        return float(raw) if not math.isnan(float(raw)) else None
+    text = re.sub(r"<[^>]+>", "", str(raw)).strip()
+    text = re.sub(r"[^\d.\-]", "", text)
+    try:
+        return float(text) if text else None
+    except ValueError:
+        return None
 
 
 def get_extended_hours_price(ticker: str) -> dict:
@@ -38,13 +54,13 @@ def get_extended_hours_price(ticker: str) -> dict:
         import yfinance as yf
         info = yf.Ticker(ticker).info
 
-        result["regular"]          = info.get("regularMarketPrice") or info.get("previousClose")
-        result["pre_market"]       = info.get("preMarketPrice")
-        result["post_market"]      = info.get("postMarketPrice")
-        result["pre_change"]       = info.get("preMarketChange")
-        result["pre_change_pct"]   = info.get("preMarketChangePercent")
-        result["post_change"]      = info.get("postMarketChange")
-        result["post_change_pct"]  = info.get("postMarketChangePercent")
+        result["regular"]          = _clean_num(info.get("regularMarketPrice") or info.get("previousClose"))
+        result["pre_market"]       = _clean_num(info.get("preMarketPrice"))
+        result["post_market"]      = _clean_num(info.get("postMarketPrice"))
+        result["pre_change"]       = _clean_num(info.get("preMarketChange"))
+        result["pre_change_pct"]   = _clean_num(info.get("preMarketChangePercent"))
+        result["post_change"]      = _clean_num(info.get("postMarketChange"))
+        result["post_change_pct"]  = _clean_num(info.get("postMarketChangePercent"))
 
         # Convert Unix timestamps to datetime
         pre_ts  = info.get("preMarketTime")

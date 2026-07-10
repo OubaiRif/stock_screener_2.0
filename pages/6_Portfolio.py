@@ -20,6 +20,26 @@ from utils import (score_color, score_bar_html, strategy_label,
 
 setup_page("Portfolio", "💼", active_page="6_Portfolio")
 
+# Fix icon-button overflow on cloud
+st.html("""
+<style>
+/* Constrain emoji action buttons so icons don't overflow */
+section[data-testid="stButton"] > button {
+    overflow: hidden;
+    line-height: 1.15;
+    padding: 0.3rem 0.4rem;
+    min-width: 0;
+}
+section[data-testid="stButton"] > button p {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.15;
+    overflow: hidden;
+    text-overflow: clip;
+}
+</style>
+""")
+
 def _position_suggestion(signal, score, pnl_pct, shares, avg_cost):
     """Rule-based suggestion with icon prefix."""
     no_position = not shares or not avg_cost

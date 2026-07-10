@@ -26,10 +26,11 @@ from engine.gold_signals import (get_position, log_trade, get_trade_history,
                                   fetch_gold_history, get_gold_from_db,
                                   compute_swing_signal, compute_macro_hold_signal,
                                   get_action_recommendations,
-                                  get_position_aware_recommendations)
+                                  get_position_aware_recommendations,
+                                  get_swing_signal_with_cache)
 from engine.etf_signals  import get_latest_macro, refresh_etf_signals
 from engine.sentiment    import get_latest_sentiment, get_headlines
-from utils               import score_color, get_et_time, is_market_hours, BULL, BEAR, NEUT
+from utils               import score_color, get_et_time, is_market_hours, BULL, BEAR, NEUT, demo_banner
 
 setup_page("Gold Dashboard", "🥇", active_page="4_Gold_Dashboard")
 
@@ -207,7 +208,7 @@ df_gold = get_gold_from_db(days=365)
 if df_gold.empty:
     df_gold = fetch_gold_history(days=365)
 
-swing  = compute_swing_signal(df_gold) if not df_gold.empty else {}
+swing  = get_swing_signal_with_cache(df_gold if not df_gold.empty else None)
 macro_sig = compute_macro_hold_signal(macro) if macro else {}
 pnl    = compute_pnl(position, cur_price) if cur_price else {}
 recs   = get_position_aware_recommendations(swing, macro_sig, pnl) if swing and macro_sig else {}
@@ -433,6 +434,9 @@ st.markdown("---")
 
 # ── SECTION 3: Macro Hold Signal ─────────────────────────────────────────────
 st.markdown("### 📊 Macro Hold Signal")
+demo_banner("📡", "Macro signal may be partial in demo",
+            "Full signal needs live FRED data (real rates, DXY, M2) fetched nightly. "
+            "On cloud some FRED series may be unavailable; signal reflects only indicators that loaded.")
 
 if macro_sig:
     sig_color = _signal_color(macro_sig["signal"])

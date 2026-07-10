@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from core.page_setup import setup_page, render_footer
 from engine.db       import get_conn, get_watchlist
 from engine.accuracy import get_accuracy_summary, get_recent_log, score_predictions
-from utils           import score_color, BULL, BEAR, NEUT
+from utils           import score_color, BULL, BEAR, NEUT, demo_banner
 
 setup_page("Accuracy", "🎯", active_page="8_Accuracy")
 
@@ -92,6 +92,10 @@ def get_finbert_comparison():
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("# 🎯 Prediction Accuracy")
+demo_banner("📊", "Many tickers show No Data in demo",
+            "Accuracy scores are computed nightly. Tickers show No Data if they have "
+            "&lt;60 bars of price history or weren't in the nightly batch yet. "
+            "Coverage grows automatically as the DB accumulates runs.")
 
 # Controls
 col_days, col_score, col_space = st.columns([2, 2, 4])

@@ -20,7 +20,7 @@ from engine.sentiment   import get_latest_sentiment, fetch_all_sentiment
 from engine.etf_signals import (refresh_etf_signals, get_latest_macro,
                                  compute_gold_signal, compute_index_signal,
                                  compute_etf_signal, _momentum, YF_MACRO, FRED_SERIES)
-from utils import (score_color, get_et_time, is_market_hours, BULL, BEAR, NEUT)
+from utils import (score_color, get_et_time, is_market_hours, BULL, BEAR, NEUT, demo_banner)
 
 setup_page("ETF Screener", "📊", active_page="2_ETF_Screener")
 
@@ -351,6 +351,9 @@ for cat_key, cat_label in CATEGORY_ORDER:
                             unsafe_allow_html=True)
         with hcol4:
             st.markdown("**Sentiment**")
+            if not sent.get("available"):
+                demo_banner("🤖", "Sentiment N/A in demo",
+                            "FinBERT is rate-limited on the free HuggingFace tier.")
             sent_color = BULL if sent_sc > 0.2 else (BEAR if sent_sc < -0.2 else NEUT)
             st.markdown(
                 f'<span style="color:{sent_color};font-weight:600">{sent_lb}</span>'

@@ -573,3 +573,65 @@ def get_position_aware_recommendations(swing: dict, macro: dict, pnl: dict) -> d
         "in_loss":         in_loss,
         "pnl_pct":         pnl_pct,
     }
+
+
+# ── Gold swing signal cache (Fix 4) ──────────────────────────────────────────
+
+import json as _json
+
+def store_swing_signal(signal_dict: dict):
+    """Persist the latest swing signal to DB so cloud demo can read it."""
+    payload = _json.dumps(signal_dict)
+    signal  = signal_dict.get("signal", "NEUTRAL")
+    score   = signal_dict.get("score")
+    conf    = signal_dict.get("confidence")
+    conn = get_conn()
+    conn.execute("""
+        INSERT INTO gold_swing_cache (computed_at, signal, score, confidence, payload)
+        VALUES (datetime('now'), ?, ?, ?, ?)
+    """, (signal, score, conf, payload))
+    # Keep only latest 30 rows
+    conn.execute("""
+        DELETE FROM gold_swing_cache
+        WHERE id NOT IN (SELECT id FROM gold_swing_cache ORDER BY id DESC LIMIT 30)
+    """)
+    conn.commit()
+    conn.close()
+
+
+def get_cached_swing_signal() -> dict | None:
+    """Return the most recently stored swing signal, or None if cache is empty."""
+    try:
+        conn = get_conn()
+        row  = conn.execute(
+            "SELECT payload, computed_at FROM gold_swing_cache ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        conn.close()
+        if row:
+            d = _json.loads(row["payload"])
+            d["_cached_at"] = row["computed_at"]
+            return d
+    except Exception:
+        pass
+    return None
+
+
+def get_swing_signal_with_cache(df) -> dict:
+    """
+    Return swing signal: compute fresh if df is available, else serve cache.
+    Stores fresh result to cache whenever successfully computed.
+    """
+    if df is not None and not (hasattr(df, 'empty') and df.empty):
+        try:
+            sig = compute_swing_signal(df)
+            if sig.get("signal") not in ("NO DATA", "INSUFFICIENT DATA"):
+                store_swing_signal(sig)
+                return sig
+        except Exception:
+            pass
+    # Fallback to cache
+    cached = get_cached_swing_signal()
+    if cached:
+        cached["_from_cache"] = True
+        return cached
+    return {"signal": "UNAVAILABLE", "score": 50, "_from_cache": True}
