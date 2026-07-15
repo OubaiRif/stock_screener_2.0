@@ -241,7 +241,7 @@ def predict(ticker, prediction_type="next_day"):
         from engine.ml_predictor import predict_ml
         ml_result = predict_ml(ticker)
         # Only use ML if direction accuracy is above 50% (otherwise it hurts)
-        if ml_result and (ml_result.get("val_accuracy") or 0) >= 50:
+        if ml_result and float(ml_result.get("val_accuracy") or 0) >= 50:
             ml = ml_result
         elif ml_result:
             logger.info("ML model for %s has low accuracy (%.1f%%) — using rules only",
