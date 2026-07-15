@@ -67,9 +67,13 @@ def score_predictions(target_date: str = None) -> list:
         error_pct = abs(actual_close - predicted) / actual_close * 100
 
         # Direction accuracy
-        # Get previous close to determine actual direction
+        # NEUTRAL is not a directional bet — exclude from scoring entirely.
+        # Only score when the system committed to BULLISH or BEARISH.
         prev_close = _get_prev_close(ticker, target_date)
-        if prev_close and prev_close > 0:
+        if signal == "NEUTRAL":
+            actual_direction = None
+            signal_correct   = None
+        elif prev_close and prev_close > 0:
             actual_direction = "BULLISH" if actual_close > prev_close else \
                                "BEARISH" if actual_close < prev_close else "NEUTRAL"
             signal_correct = 1 if signal == actual_direction else 0
@@ -121,25 +125,21 @@ def score_predictions(target_date: str = None) -> list:
 
 
 def _fetch_actuals(tickers: list, target_date: str) -> dict:
-    """Fetch actual OHLC for target_date from yfinance."""
+    """Fetch actual OHLC for target_date from price_history DB (same source as indicators)."""
     result = {}
-    start  = target_date
-    end    = (datetime.fromisoformat(target_date) + timedelta(days=1)).strftime("%Y-%m-%d")
-
+    conn   = get_conn()
     for ticker in tickers:
-        try:
-            tk = yf.Ticker(ticker)
-            df = tk.history(start=start, end=end, auto_adjust=True)
-            if not df.empty:
-                row = df.iloc[-1]
-                result[ticker] = {
-                    "close": float(row["Close"]),
-                    "high":  float(row["High"]),
-                    "low":   float(row["Low"]),
-                }
-        except Exception as e:
-            logger.error("Could not fetch actual for %s: %s", ticker, e)
-
+        row = conn.execute("""
+            SELECT close, high, low FROM price_history
+            WHERE ticker = ? AND date = ?
+        """, (ticker, target_date)).fetchone()
+        if row:
+            result[ticker] = {
+                "close": float(row["close"]),
+                "high":  float(row["high"]),
+                "low":   float(row["low"]),
+            }
+    conn.close()
     return result
 
 
