@@ -1,6 +1,6 @@
 """
 pages/5_Trading_Assistant.py — Trading Assistant
-Stock Screener 2.0 — uses core/ layer, no sidebar.
+Stock Screener 2.5 — uses core/ layer, no sidebar.
 """
 import sys, os
 from datetime import date, datetime

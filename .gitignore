@@ -30,4 +30,7 @@ Thumbs.db
 
 # Personal CSVs
 History_for_Account*.csv
-demo_screener.db
+
+# Spec/handoff docs — local only
+screener_2.5_*.md
+stock_screener_*.zip

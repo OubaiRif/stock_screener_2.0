@@ -136,6 +136,7 @@ def init_schema():
         date                TEXT NOT NULL,
         generated_at        TEXT DEFAULT (datetime('now')),
         prediction_type     TEXT NOT NULL,
+        horizon_days        INTEGER,
         price_low           REAL, price_mid REAL, price_high REAL,
         signal              TEXT,
         confidence          REAL,
@@ -235,7 +236,8 @@ def init_schema():
         prediction_type TEXT NOT NULL,
         predicted_mid   REAL, actual_close REAL, error_pct REAL,
         signal          TEXT, signal_correct INTEGER,
-        logged_at       TEXT DEFAULT (datetime('now'))\
+        naive_error_pct REAL,
+        logged_at       TEXT DEFAULT (datetime('now'))
     )""")
 
     cur.execute("""

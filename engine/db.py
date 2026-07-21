@@ -113,6 +113,7 @@ def init_db() -> None:
         date                TEXT NOT NULL,
         generated_at        TEXT DEFAULT (datetime('now')),
         prediction_type     TEXT NOT NULL,
+        horizon_days        INTEGER,
         price_low           REAL, price_mid REAL, price_high REAL,
         signal              TEXT,
         confidence          REAL,
@@ -123,6 +124,13 @@ def init_db() -> None:
         UNIQUE(ticker, date, prediction_type),
         FOREIGN KEY(ticker) REFERENCES stocks(ticker)
     )""")
+
+    # Guarded migration: add horizon_days to existing predictions tables
+    try:
+        cur.execute("ALTER TABLE predictions ADD COLUMN horizon_days INTEGER")
+        logger.info("Migrated predictions: added horizon_days column")
+    except Exception:
+        pass  # Column already exists
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS headlines (
@@ -212,8 +220,16 @@ def init_db() -> None:
         prediction_type TEXT NOT NULL,
         predicted_mid   REAL, actual_close REAL, error_pct REAL,
         signal          TEXT, signal_correct INTEGER,
+        naive_error_pct REAL,
         logged_at       TEXT DEFAULT (datetime('now'))
     )""")
+
+    # Guarded migration: add naive_error_pct to existing DBs
+    try:
+        cur.execute("ALTER TABLE accuracy_log ADD COLUMN naive_error_pct REAL")
+        logger.info("Migrated accuracy_log: added naive_error_pct column")
+    except Exception:
+        pass  # Column already exists
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS gold_swing_cache (

@@ -13,7 +13,7 @@ from core.page_setup  import setup_page, render_footer
 from core.db_queries  import (get_swing_stocks_with_predictions, get_current_price,
                                get_volume_spikes)
 from core.refresh     import run_full_refresh
-from engine.db        import get_watchlist
+from engine.db        import get_watchlist, get_conn
 from engine.indicators import get_latest_indicators
 from engine.sentiment  import get_latest_sentiment
 from engine.prices import get_extended_hours_price, format_change_html
@@ -152,16 +152,53 @@ for r in rows:
 
         col1, col2, col3 = st.columns([2, 2, 2])
 
+        # Fetch today's swing prediction if available
+        _today = date.today().isoformat()
+        _conn_sw = get_conn()
+        _sw_pred = _conn_sw.execute("""
+            SELECT signal, confidence, composite_score, technical_score,
+                   fundamental_score, sentiment_score, horizon_days,
+                   price_low, price_mid, price_high
+            FROM predictions
+            WHERE ticker=? AND date=? AND prediction_type LIKE 'swing_%'
+            ORDER BY generated_at DESC LIMIT 1
+        """, (ticker, _today)).fetchone()
+        _conn_sw.close()
+
+        # Use swing prediction if available, else fall back to next_day
+        if _sw_pred:
+            sw_signal = _sw_pred["signal"] or "NEUTRAL"
+            sw_conf   = _sw_pred["confidence"] or 0
+            sw_score  = _sw_pred["composite_score"] or 50
+            sw_ts     = _sw_pred["technical_score"] or 0
+            sw_fs     = _sw_pred["fundamental_score"] or 0
+            sw_ss     = _sw_pred["sentiment_score"] or 0
+            sw_h      = _sw_pred["horizon_days"] or 5
+            sw_mid    = _sw_pred["price_mid"]
+            sw_low    = _sw_pred["price_low"]
+            sw_high   = _sw_pred["price_high"]
+            sw_c      = BULL if sw_signal=="BULLISH" else (BEAR if sw_signal=="BEARISH" else NEUT)
+            sw_a      = "▲" if sw_signal=="BULLISH" else ("▼" if sw_signal=="BEARISH" else "—")
+        else:
+            sw_signal, sw_conf, sw_score = signal, r["confidence"] or 0, score
+            sw_ts = r["technical_score"] or 0
+            sw_fs = r["fundamental_score"] or 0
+            sw_ss = r["sentiment_score"] or 0
+            sw_h, sw_mid, sw_low, sw_high = 5, None, None, None
+            sw_c, sw_a = sig_c, sig_a
+
         with col1:
             st.markdown("**Signal**")
             st.markdown(
-                f'<span style="color:{sig_c};font-size:1.3em;font-weight:700">{sig_a} {signal}</span>'
-                f'<br><span class="conf-label">{r["confidence"] or 0:.0f}% confidence</span>',
+                f'<span style="color:{sw_c};font-size:1.3em;font-weight:700">{sw_a} {sw_signal}</span>'
+                f'<br><span class="conf-label">{sw_conf:.0f}% confidence</span>'
+                + (f'<br><span style="font-size:.75em;color:#555">Swing {sw_h}d · direction focus</span>'
+                   if _sw_pred else '<br><span style="font-size:.75em;color:#777">next_day signal</span>'),
                 unsafe_allow_html=True)
-            st.markdown(score_bar_html(score), unsafe_allow_html=True)
+            st.markdown(score_bar_html(sw_score), unsafe_allow_html=True)
             st.markdown(f'<span style="font-size:.8em;color:#444">'
-                        f'T:{r["technical_score"] or 0:.0f} · F:{r["fundamental_score"] or 0:.0f} '
-                        f'· S:{r["sentiment_score"] or 0:.0f}</span>', unsafe_allow_html=True)
+                        f'T:{sw_ts:.0f} · F:{sw_fs:.0f} · S:{sw_ss:.0f}</span>',
+                        unsafe_allow_html=True)
             if pnl_html:
                 st.markdown("---")
                 st.markdown("**Position**")
@@ -183,17 +220,23 @@ for r in rows:
                     f'<span style="color:{_sc};font-size:.82em;font-family:IBM Plex Mono,monospace">'
                     f'{_slbl} ${_spx["price"]:.2f} {_sa}{abs(_spct):.1f}%</span>',
                     unsafe_allow_html=True)
-            if p_mid and current:
-                mv_c = BULL if (exp_mv or 0) >= 0 else BEAR
-                mv_a = "▲" if (exp_mv or 0) >= 0 else "▼"
-                st.markdown(f'<span style="color:#444;font-size:.85em">Predicted → </span>'
-                            f'<span style="font-family:IBM Plex Mono,monospace;color:{score_color(score)};font-weight:600">'
-                            f'${p_mid:.2f}</span> '
-                            f'<span style="color:{mv_c};font-size:.85em">{mv_a}{abs(exp_mv):.2f}%</span>',
+            if (sw_mid or p_mid) and current:
+                _disp_mid  = sw_mid or p_mid
+                _disp_low  = sw_low or r.get("price_low")
+                _disp_high = sw_high or r.get("price_high")
+                _disp_mv   = ((_disp_mid - current) / current * 100) if _disp_mid and current else None
+                mv_c = BULL if (_disp_mv or 0) >= 0 else BEAR
+                mv_a = "▲" if (_disp_mv or 0) >= 0 else "▼"
+                _label = f"Swing {sw_h}d →" if _sw_pred and sw_mid else "Predicted →"
+                st.markdown(f'<span style="color:#444;font-size:.85em">{_label} </span>'
+                            f'<span style="font-family:IBM Plex Mono,monospace;color:{score_color(sw_score)};font-weight:600">'
+                            f'${_disp_mid:.2f}</span> '
+                            f'<span style="color:{mv_c};font-size:.85em">{mv_a}{abs(_disp_mv):.2f}%</span>',
                             unsafe_allow_html=True)
-                st.markdown(f'<span style="font-size:.78em;color:#555">'
-                            f'Range: ${r["price_low"]:.2f} – ${r["price_high"]:.2f}</span>',
-                            unsafe_allow_html=True)
+                if _disp_low and _disp_high:
+                    st.markdown(f'<span style="font-size:.78em;color:#555">'
+                                f'Range: ${_disp_low:.2f} – ${_disp_high:.2f}</span>',
+                                unsafe_allow_html=True)
             st.markdown(f'<span class="strat-pill" style="margin-top:8px;display:inline-block">'
                         f'{strategy_label(r["strategy"] or "unassigned")}</span>',
                         unsafe_allow_html=True)

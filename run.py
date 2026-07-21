@@ -8,12 +8,12 @@ from datetime import date
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from config import STRATEGIES, LOG_PATH, LOG_LEVEL
+from config import STRATEGIES, LOG_PATH, LOG_LEVEL, SWING_EXCLUDE_TICKERS
 from engine.db import init_db, get_watchlist, upsert_stock, remove_stock, set_strategy, get_conn
 from engine.fetcher import fetch_daily_history, fetch_fundamentals
 from engine.indicators import refresh_indicators
 from engine.sentiment import fetch_sentiment_batch, get_latest_sentiment
-from engine.predictor import predict
+from engine.predictor import predict, predict_swing
 from engine.strategy_advisor import suggest_strategy
 from engine.accuracy import score_predictions
 from engine.ml_predictor import train, train_all
@@ -132,6 +132,27 @@ def cmd_train(tickers=None):
             print(f"✗ {e}")
 
 
+def cmd_predict_swing(tickers=None):
+    if not tickers: tickers = [s["ticker"] for s in get_watchlist()]
+    if not tickers: print("Watchlist empty."); return
+    print(f"\n{'='*60}\n  SWING PREDICTIONS — {date.today().isoformat()}\n{'='*60}")
+    watchlist_map = {s["ticker"]: s for s in get_watchlist()}
+    for t in tickers:
+        row = watchlist_map.get(t, {})
+        if row.get("is_etf") or t in SWING_EXCLUDE_TICKERS:
+            logger.info("Swing prediction skipped for %s: ETF (macro rubric planned)", t)
+            print(f"\n  {t}: skipped — ETF (macro rubric planned)")
+            continue
+        try:
+            r = predict_swing(t)
+            print(f"\n  {r['ticker']} | swing_{r['horizon_days']}d | {r['signal']} | {r['confidence']:.0f}% conf")
+            print(f"  Score: {_bar(r['composite_score'])} {r['composite_score']:.1f}/100  "
+                  f"[T:{r['technical_score']:.0f} F:{r['fundamental_score']:.0f} S:{r['sentiment_score']:.0f}]")
+            if r.get("price_mid"):
+                print(f"  Range: ${r['price_low']:.2f} ← ${r['price_mid']:.2f} → ${r['price_high']:.2f}")
+        except Exception as e: logger.error("Swing prediction failed for %s: %s", t, e)
+
+
 def cmd_nightly():
     print("Starting nightly pipeline…")
     tickers = [s["ticker"] for s in get_watchlist()]
@@ -140,6 +161,26 @@ def cmd_nightly():
     cmd_sentiment(tickers)
     cmd_train(tickers)
     cmd_predict(tickers)
+    # Swing horizon predictions — ETFs excluded (is_etf flag or SWING_EXCLUDE_TICKERS)
+    # ETFs get next_day predictions above unchanged; swing uses equity rubric only.
+    print(f"Generating swing predictions for {len(tickers)} tickers…")
+    swing_ok, swing_fail, swing_skip = 0, 0, 0
+    watchlist_map = {s["ticker"]: s for s in get_watchlist()}
+    for t in tickers:
+        row = watchlist_map.get(t, {})
+        if row.get("is_etf") or t in SWING_EXCLUDE_TICKERS:
+            logger.info("Swing prediction skipped for %s: ETF (macro rubric planned)", t)
+            print(f"  {t}: skipped — ETF")
+            swing_skip += 1
+            continue
+        try:
+            r = predict_swing(t)
+            print(f"  {t}: swing_{r['horizon_days']}d → {r['signal']} ({r['confidence']:.0f}% conf)")
+            swing_ok += 1
+        except Exception as e:
+            logger.error("Swing prediction failed for %s: %s", t, e)
+            swing_fail += 1
+    print(f"  Swing predictions: {swing_ok} ok, {swing_skip} skipped (ETF), {swing_fail} failed")
     # Refresh ETF signals
     etfs = [s for s in get_watchlist() if s.get("is_etf")]
     if etfs:
@@ -169,20 +210,22 @@ def _bar(score):
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("command", choices=["init","add","remove","strategy","suggest",
-                                        "refresh","sentiment","train","predict","status","nightly"])
+                                        "refresh","sentiment","train","predict",
+                                        "predict_swing","status","nightly"])
     p.add_argument("args", nargs="*")
     a = p.parse_args()
     dispatch = {
-        "init":      lambda: cmd_init(),
-        "add":       lambda: cmd_add(a.args),
-        "remove":    lambda: cmd_remove(a.args),
-        "strategy":  lambda: cmd_strategy(a.args[0], a.args[1]) if len(a.args)>=2 else print("Usage: strategy TICKER name"),
-        "suggest":   lambda: cmd_suggest(a.args or None),
-        "refresh":   lambda: cmd_refresh(a.args or None),
-        "sentiment": lambda: cmd_sentiment(a.args or None),
-        "train":     lambda: cmd_train(a.args or None),
-        "predict":   lambda: cmd_predict(a.args or None),
-        "status":    lambda: cmd_status(),
-        "nightly":   lambda: cmd_nightly(),
+        "init":         lambda: cmd_init(),
+        "add":          lambda: cmd_add(a.args),
+        "remove":       lambda: cmd_remove(a.args),
+        "strategy":     lambda: cmd_strategy(a.args[0], a.args[1]) if len(a.args)>=2 else print("Usage: strategy TICKER name"),
+        "suggest":      lambda: cmd_suggest(a.args or None),
+        "refresh":      lambda: cmd_refresh(a.args or None),
+        "sentiment":    lambda: cmd_sentiment(a.args or None),
+        "train":        lambda: cmd_train(a.args or None),
+        "predict":      lambda: cmd_predict(a.args or None),
+        "predict_swing":lambda: cmd_predict_swing(a.args or None),
+        "status":       lambda: cmd_status(),
+        "nightly":      lambda: cmd_nightly(),
     }
     dispatch[a.command]()

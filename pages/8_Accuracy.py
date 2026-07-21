@@ -101,7 +101,7 @@ if DEMO_MODE:
             "Coverage grows automatically as the DB accumulates runs.")
 
 # Controls
-col_days, col_score, col_space = st.columns([2, 2, 4])
+col_days, col_score, col_type, col_space = st.columns([2, 2, 2, 2])
 with col_days:
     days = st.selectbox("Lookback Period", [7, 14, 30, 60, 90], index=2,
                         format_func=lambda d: f"Last {d} days")
@@ -114,12 +114,26 @@ with col_score:
             st.success(f"Scored {len(results)} predictions — direction correct: {correct}/{len(results)}")
         else:
             st.info("No predictions to score, or market has not closed yet.")
+with col_type:
+    pred_type_filter = st.selectbox("Prediction Type",
+                                    ["All", "next_day", "swing"],
+                                    index=0, key="pred_type_filter")
 
 st.markdown("---")
 
 # ── Data ──────────────────────────────────────────────────────────────────────
 summary  = get_accuracy_summary(days=days)
-log      = get_recent_log(limit=100)
+since_date = (date.today() - timedelta(days=days)).isoformat()
+log_all  = get_recent_log(limit=500, since=since_date)
+
+# Apply prediction-type filter to log
+if pred_type_filter == "next_day":
+    log = [r for r in log_all if r["prediction_type"] == "next_day"]
+elif pred_type_filter == "swing":
+    log = [r for r in log_all if r["prediction_type"].startswith("swing_")]
+else:
+    log = log_all
+
 watchlist = get_watchlist()
 
 # Minimum data warning
@@ -182,6 +196,35 @@ with m5:
     n = summary.get("total_scored", 0)
     st.markdown(f'<div class="big-metric" style="color:#e0e0e0">{n}</div>'
                 f'<div class="big-label">Total Predictions Scored</div>', unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# Naive baseline comparison
+model_err = ov.get("avg_error_pct")
+naive_err = ov.get("avg_naive_pct")
+if model_err is not None and naive_err is not None:
+    diff = round(naive_err - model_err, 2)
+    if diff > 0:
+        verdict_color = BULL
+        verdict = f"Model beats naive by {diff:.2f} pts ✓"
+    else:
+        verdict_color = "#ffd700"
+        verdict = f"Model does not beat naive (naive: {naive_err:.2f}% vs model: {model_err:.2f}%)"
+    st.markdown(
+        f'**Price Error vs Naive (persistence) Baseline** — '
+        f'Model avg error <span style="font-family:IBM Plex Mono,monospace">{model_err:.2f}%</span> · '
+        f'Naive avg error <span style="font-family:IBM Plex Mono,monospace">{naive_err:.2f}%</span> · '
+        f'<span style="color:{verdict_color};font-weight:600">{verdict}</span>',
+        unsafe_allow_html=True)
+
+# Coin-flip baseline for direction
+da_overall = ov.get("direction_acc")
+if da_overall is not None:
+    st.markdown(
+        f'**Direction Accuracy** — '
+        f'<span style="font-family:IBM Plex Mono,monospace">{da_overall:.1f}%</span> '
+        f'<span style="color:#555;font-size:.88em">(coin-flip baseline: 50%)</span>',
+        unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -255,7 +298,10 @@ else:
                     f'</div>'
                     f'<div class="acc-row">'
                     f'<span class="acc-label">Average Error</span>'
-                    f'<span class="acc-val" style="color:{err_c}">{stats.get("avg_error_pct","—"):.2f}%</span>'
+                    f'<span class="acc-val" style="color:{err_c}">{stats.get("avg_error_pct","—"):.2f}%'
+                    + (f' <span style="color:#555;font-size:.82em">vs naive {stats["avg_naive_pct"]:.2f}%</span>'
+                       if stats.get("avg_naive_pct") is not None else '')
+                    + f'</span>'
                     f'</div>'
                     f'<div class="acc-row">'
                     f'<span class="acc-label">Within 1% — Within 3%</span>'
@@ -280,6 +326,22 @@ else:
             st.markdown(f'<span style="font-size:.75em;color:#333">'
                         f'Based on {stats.get("n","—")} predictions</span>',
                         unsafe_allow_html=True)
+            # Buy-and-hold up-days reference: % of days ticker closed up over same window
+            conn_bh = get_conn()
+            since_bh = (date.today() - timedelta(days=days)).isoformat()
+            bh_rows = conn_bh.execute("""
+                SELECT close, LAG(close) OVER (ORDER BY date) as prev_close
+                FROM price_history WHERE ticker=? AND date >= ?
+                ORDER BY date
+            """, (ticker, since_bh)).fetchall()
+            conn_bh.close()
+            bh_up = sum(1 for r in bh_rows if r["close"] and r["prev_close"] and r["close"] > r["prev_close"])
+            bh_total = sum(1 for r in bh_rows if r["prev_close"] is not None)
+            if bh_total > 0:
+                bh_pct = bh_up / bh_total * 100
+                st.markdown(f'<span style="font-size:.75em;color:#555">'
+                            f'B&H up-days: {bh_pct:.0f}% ({bh_up}/{bh_total} days)</span>',
+                            unsafe_allow_html=True)
         with c4:
             st.markdown("**XGBoost Model**")
             conn   = get_conn()
@@ -472,7 +534,8 @@ else:
         st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Recent log ────────────────────────────────────────────────────────────────
-st.markdown("## Recent Predictions Log")
+_type_label = f" ({pred_type_filter})" if pred_type_filter != "All" else ""
+st.markdown(f"## Recent Predictions Log{_type_label}")
 all_tickers = ["All"] + sorted(set(r["ticker"] for r in log))
 filter_t    = st.selectbox("Filter by ticker", all_tickers)
 filtered_log = [r for r in log if filter_t == "All" or r["ticker"] == filter_t][:30]

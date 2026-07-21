@@ -17,10 +17,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from core.page_setup   import setup_page, render_footer
 from core.db_queries   import get_current_price
 from engine.prices import get_extended_hours_price, format_price_label, format_change_html
-from engine.db         import get_conn, get_watchlist, upsert_stock
+from engine.db         import get_conn, get_watchlist, upsert_stock, remove_stock
 from engine.fetcher    import load_daily_history, fetch_daily_history, fetch_fundamentals
 from engine.indicators import compute_indicators, get_latest_indicators, refresh_indicators
-from engine.predictor  import predict
+from engine.predictor  import predict, predict_swing
 from engine.sentiment  import get_latest_sentiment, get_headlines
 from utils import (score_color, strategy_label, get_et_time, is_market_hours,
                    BULL, BEAR, NEUT, move_html, demo_banner)
@@ -405,9 +405,20 @@ with pred_col:
 
         # ML row
         ml_row = ""
+        ml_price_gated = pred.get("ml_price_gated", False)
+        event_risk     = pred.get("event_risk", False)
+        er_ratio       = pred.get("event_risk_ratio", 0)
+        er_count       = pred.get("event_risk_count", 0)
         if ml:
             ml_c = BULL if ml["direction"]=="BULLISH" else BEAR
             ml_a = "▲" if ml["direction"]=="BULLISH" else "▼"
+            if ml_price_gated:
+                price_html = (
+                    f'<span style="color:#555;text-decoration:line-through">${ml["predicted_price"]:.2f}</span>'
+                    f'&nbsp;<span style="color:#777;font-size:.9em">ML price excluded — model MAE too high vs price</span>'
+                )
+            else:
+                price_html = f'<span style="color:#e0e0e0">${ml["predicted_price"]:.2f}</span>'
             ml_row = (
                 f'<div style="margin-top:10px;padding-top:10px;border-top:1px solid #2e3550;'
                 f'font-size:.82em;color:#333;font-family:IBM Plex Mono,monospace">'
@@ -417,7 +428,7 @@ with pred_col:
                 f'<span style="color:{BULL}">▲ Bull {ml["bullish_prob"]:.0f}%</span>'
                 f'&nbsp;·&nbsp;'
                 f'<span style="color:{BEAR}">▼ Bear {ml["bearish_prob"]:.0f}%</span>'
-                f'&nbsp;·&nbsp;Price: <span style="color:#e0e0e0">${ml["predicted_price"]:.2f}</span>'
+                f'&nbsp;·&nbsp;Price: {price_html}'
                 f'&nbsp;·&nbsp;Val acc: {ml["val_accuracy"]:.1f}%'
                 f'</div>'
             )
@@ -436,6 +447,15 @@ with pred_col:
                 f'</div>'
             )
 
+        # Event-risk warning row
+        event_risk_row = ""
+        if event_risk:
+            event_risk_row = (
+                f'<div style="margin-top:8px;padding:6px 10px;background:#2a1f00;border-radius:6px;'
+                f'font-size:.8em;color:#ffd700">⚠ Event risk: unusual news volume '
+                f'({er_ratio:.1f}× normal · {er_count} mentions today) — bands widened, confidence reduced</div>'
+            )
+
         st.markdown(f"""
         <div class="prediction-banner {ban_cls}">
           <div class="section-title">Prediction for {next_day}</div>
@@ -452,6 +472,7 @@ with pred_col:
           {range_s}
           {ml_row}
           {rules_row}
+          {event_risk_row}
         </div>""", unsafe_allow_html=True)
 
         # Retrain button
@@ -468,6 +489,51 @@ with pred_col:
                         st.cache_data.clear(); st.rerun()
                 except Exception as e:
                     st.error(f"Training error: {e}")
+
+        # ── Swing prediction mini-card ────────────────────────────────────
+        try:
+            from config import SWING_EXCLUDE_TICKERS
+            # Check is_etf flag from DB first, then fallback to config set
+            _conn_etf = get_conn()
+            _etf_row  = _conn_etf.execute(
+                "SELECT is_etf FROM stocks WHERE ticker=?", (ticker,)
+            ).fetchone()
+            _conn_etf.close()
+            _is_etf = ((_etf_row and _etf_row["is_etf"]) or ticker in SWING_EXCLUDE_TICKERS)
+            if _is_etf:
+                st.markdown(
+                    '<div style="margin-top:10px;padding:8px 14px;border:1px solid #2e3550;'
+                    'border-radius:8px;background:#12172a;font-size:.8em;color:#555">'
+                    '⚙ Swing predictions not run for ETFs (macro rubric planned).</div>',
+                    unsafe_allow_html=True)
+            else:
+                sw = predict_swing(ticker)
+                if sw and sw.get("signal"):
+                    sw_sig  = sw["signal"]
+                    sw_c    = BULL if sw_sig == "BULLISH" else (BEAR if sw_sig == "BEARISH" else NEUT)
+                    sw_a    = {"BULLISH":"▲","BEARISH":"▼"}.get(sw_sig,"—")
+                    sw_h    = sw.get("horizon_days", 5)
+                    sw_mid  = sw.get("price_mid")
+                    sw_low  = sw.get("price_low")
+                    sw_high = sw.get("price_high")
+                    sw_conf = sw.get("confidence", 0)
+                    sw_score= sw.get("composite_score", 50)
+                    sw_range= (f'<span style="font-family:IBM Plex Mono,monospace;font-size:.82em;color:#777">'
+                               f'${sw_low:.2f} &nbsp;{"─"*4}&nbsp;'
+                               f'<b style="color:#e0e0e0">${sw_mid:.2f}</b>'
+                               f'&nbsp;{"─"*4}&nbsp; ${sw_high:.2f}</span>') if sw_mid else ""
+                    st.markdown(f"""
+                    <div style="margin-top:10px;padding:10px 14px;border:1px solid #2e3550;
+                         border-radius:8px;background:#12172a">
+                      <div style="font-size:.72em;text-transform:uppercase;letter-spacing:.06em;
+                           color:#555;margin-bottom:4px">Swing {sw_h}d · Direction focus
+                           · T:{sw.get('technical_score',0):.0f} F:{sw.get('fundamental_score',0):.0f} S:{sw.get('sentiment_score',0):.0f}</div>
+                      <span style="color:{sw_c};font-size:1.1em;font-weight:700">{sw_a} {sw_sig}</span>
+                      <span style="color:#555;font-size:.8em;margin-left:8px">{sw_conf:.0f}% conf · {sw_score:.0f}/100</span>
+                      <div style="margin-top:4px">{sw_range}</div>
+                    </div>""", unsafe_allow_html=True)
+        except Exception:
+            pass  # Swing prediction errors are non-fatal — next_day card already shown
 
     except Exception as e:
         st.error(f"Prediction error: {e}")
@@ -545,8 +611,8 @@ st.markdown("---")
 st.markdown("### 📋 Watchlist")
 
 for _col, _hdr in zip(
-    st.columns([1.2, 2.5, 1.8, 2, 2, 1.5]),
-    ["Ticker", "Name", "Price", "Signal", "Score", "Actions"]
+    st.columns([1.2, 2.5, 1.8, 2, 2, 1.0, 1.0]),
+    ["Ticker", "Name", "Price", "Signal", "Score", "View", "Remove"]
 ):
     _col.markdown(f"**{_hdr}**")
 st.markdown('<hr style="margin:4px 0;border-color:#dde1ea">', unsafe_allow_html=True)
@@ -569,7 +635,7 @@ for _wl_s in watchlist:
     _sig_a  = "▲" if _signal == "BULLISH" else ("▼" if _signal == "BEARISH" else "—")
     _pf     = " 💼" if _wl_s.get("in_portfolio") else ""
 
-    _c1, _c2, _c3, _c4, _c5, _c6 = st.columns([1.2, 2.5, 1.8, 2, 2, 1.5])
+    _c1, _c2, _c3, _c4, _c5, _c6, _c7 = st.columns([1.2, 2.5, 1.8, 2, 2, 1.0, 1.0])
     _c1.markdown(f'<span style="font-weight:{"700" if _active else "400"};color:{"#0066cc" if _active else "#222"}">{_t}{_pf}</span>', unsafe_allow_html=True)
     _c2.markdown(f'<span style="font-size:.85em;color:#444">{(_wl_s.get("name") or _t)[:28]}</span>', unsafe_allow_html=True)
     _c3.markdown(f'<span style="font-family:IBM Plex Mono,monospace">{"$" + f"{_cur:.2f}" if _cur else "—"}</span>', unsafe_allow_html=True)
@@ -580,6 +646,19 @@ for _wl_s in watchlist:
     else:
         if _c6.button("View", key=f"wl_view_{_t}"):
             st.session_state["detail_ticker"] = _t
+            st.rerun()
+    # Remove button — with confirmation via session state to prevent accidental deletes
+    _confirm_key = f"wl_confirm_remove_{_t}"
+    if st.session_state.get(_confirm_key):
+        if _c7.button("✓ Sure?", key=f"wl_confirm_yes_{_t}", type="primary"):
+            remove_stock(_t)
+            st.session_state.pop(_confirm_key, None)
+            if st.session_state.get("detail_ticker") == _t:
+                st.session_state["detail_ticker"] = None
+            st.rerun()
+    else:
+        if _c7.button("🗑", key=f"wl_remove_{_t}", help=f"Remove {_t} from watchlist"):
+            st.session_state[_confirm_key] = True
             st.rerun()
     st.markdown('<hr style="margin:3px 0;border-color:#eee">', unsafe_allow_html=True)
 

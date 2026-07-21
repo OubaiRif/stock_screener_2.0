@@ -1,6 +1,6 @@
 """
 pages/2_ETF_Screener.py — ETF Screener with macro environment, gold and index signals.
-Stock Screener 2.0 — uses core/ layer, no sidebar.
+Stock Screener 2.5 — uses core/ layer, no sidebar.
 """
 import sys, os, json
 from datetime import date, datetime

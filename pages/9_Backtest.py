@@ -1,6 +1,6 @@
 """
 pages/9_Backtest.py — Backtesting dashboard.
-Stock Screener 2.0 — uses core/ layer, no sidebar.
+Stock Screener 2.5 — uses core/ layer, no sidebar.
 """
 import sys, os
 from datetime import date, datetime, timedelta

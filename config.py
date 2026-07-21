@@ -5,6 +5,9 @@ Edit this file to set your API keys and preferences.
 
 import os
 
+# ── Version ───────────────────────────────────────────────────────────────────
+APP_VERSION = "2.5.0"
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH  = os.path.join(BASE_DIR, "screener.db")
@@ -46,6 +49,18 @@ SCORE_WEIGHT_SENTIMENT   = 0.25
 
 # ── Strategies ────────────────────────────────────────────────────────────────
 STRATEGIES = ["trend", "mean_reversion", "rubber_band", "breakout_volume", "unassigned"]
+
+# Swing prediction horizons (trading days) per strategy
+STRATEGY_HORIZONS = {
+    "trend":            20,
+    "mean_reversion":    7,
+    "rubber_band":       5,
+    "breakout_volume":   5,
+    "unassigned":        5,
+}
+
+# ETFs: no fundamentals; macro rubric planned. Excluded from swing predictions only.
+SWING_EXCLUDE_TICKERS = {"GLD", "IAU", "QQQ", "VOO"}
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 LOG_LEVEL = "INFO"

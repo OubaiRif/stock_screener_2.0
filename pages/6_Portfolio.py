@@ -485,13 +485,12 @@ for r in rows_display:
                 f'<br><span style="color:{sug_c};font-size:.78em">{sug_txt}</span>',
                 unsafe_allow_html=True)
 
-    b1, b2, b3 = c8.columns(3)
-    if b1.button("📊", key=f"pf_det_{ticker}", help="Detail"):
+    if c8.button("📊 Detail", key=f"pf_det_{ticker}", use_container_width=True):
         st.session_state["detail_ticker"] = ticker
         st.switch_page("pages/1_Stock_Detail.py")
-    if b2.button("✏️", key=f"pf_edit_{ticker}", help="Edit position"):
+    if c8.button("✏️ Edit", key=f"pf_edit_{ticker}", use_container_width=True):
         edit_position_modal(r)
-    if b3.button("💱", key=f"pf_trade_{ticker}", help="Log trade"):
+    if c8.button("💱 Trade", key=f"pf_trade_{ticker}", use_container_width=True):
         log_trade_modal(r)
 
     st.markdown('<hr style="margin:4px 0;border-color:#eee">', unsafe_allow_html=True)

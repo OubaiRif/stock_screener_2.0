@@ -1,5 +1,5 @@
 """
-dashboard.py — Stock Screener 2.0 Home Page.
+dashboard.py — Stock Screener 2.5 Home Page.
 6 tabs: Market | Stocks | ETFs | Gold | Accuracy | Analyzer
 No sidebar — top nav via core/page_setup.py.
 """
@@ -11,6 +11,7 @@ import streamlit as st
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.page_setup  import setup_page, render_footer
+from config import APP_VERSION
 from engine.prices import get_extended_hours_price, format_price_label, format_change_html
 from core.db_queries  import (get_all_stocks_with_predictions, get_volume_spikes,
                                get_current_price, get_etf_list, get_etf_signal_db,
@@ -39,7 +40,7 @@ if DEMO_MODE and not os.path.exists(DB_PATH):
             st.error(f"Demo setup failed: {e}")
             st.stop()
 
-setup_page("Stock Screener 2.0", "📈", active_page="dashboard")
+setup_page(f"Stock Screener {APP_VERSION.rsplit('.', 1)[0]}", "📈", active_page="dashboard")
 
 if "last_refresh" not in st.session_state:
     st.session_state["last_refresh"] = None
@@ -134,7 +135,7 @@ et = get_et_time()
 h1, h2, h3, h4, h5, h6 = st.columns([2.5, 1.2, 1.2, 1.2, 1.2, 1.5])
 
 with h1:
-    st.markdown("## 📈 Stock Screener 2.0")
+    st.markdown(f"## 📈 Stock Screener {APP_VERSION.rsplit('.', 1)[0]}")
     st.markdown(f"<span style='color:#444;font-size:.9em'>{date.today().strftime('%A, %B %d, %Y')}</span>",
                 unsafe_allow_html=True)
 with h2:
