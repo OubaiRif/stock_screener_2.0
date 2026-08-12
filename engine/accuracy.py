@@ -14,6 +14,7 @@ import yfinance as yf
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from engine.db import get_conn
+from engine.calendar_utils import add_trading_days
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ def score_predictions(target_date: str = None) -> list:
     Two passes:
       1. next_day: predictions WHERE date = target_date AND type = 'next_day'
       2. swing maturation: swing_Nd predictions where prediction_date + horizon_days
-         <= target_date (calendar-day approximation — noted as acceptable in spec).
+         NYSE trading sessions <= target_date (see _score_swing_matured).
          Direction: actual close on target_date vs close on prediction_date.
     Returns combined list of result dicts.
     """
@@ -161,14 +162,16 @@ def _score_next_day(target_date: str) -> list:
 def _score_swing_matured(target_date: str) -> list:
     """
     Score swing predictions that have matured by target_date.
-    A swing_Nd prediction made on date D matures when D + horizon_days <= target_date.
-    Calendar-day approximation: uses date arithmetic in SQL, not trading days.
+    A swing_Nd prediction made on trading day D matures when D + horizon_days
+    NYSE trading sessions <= target_date. Maturation is computed in Python via
+    engine.calendar_utils.add_trading_days, not SQL date() arithmetic — SQLite
+    has no concept of a trading-day calendar.
     Direction: BULLISH correct if close on target_date > close on prediction_date.
     Dedup: ON CONFLICT DO NOTHING guards against double-scoring.
     """
     conn = get_conn()
-    # Find matured swing predictions not yet scored
-    preds = conn.execute("""
+    # Fetch all unscored swing predictions; maturity is filtered in Python below.
+    candidates = conn.execute("""
         SELECT p.ticker, p.prediction_type, p.date AS pred_date,
                p.price_mid, p.signal, p.composite_score,
                p.horizon_days, s.strategy
@@ -177,15 +180,19 @@ def _score_swing_matured(target_date: str) -> list:
         WHERE  p.prediction_type LIKE 'swing_%'
         AND    p.price_mid IS NOT NULL
         AND    p.horizon_days IS NOT NULL
-        AND    date(p.date, '+' || p.horizon_days || ' day') <= date(?)
         AND    NOT EXISTS (
             SELECT 1 FROM accuracy_log a
             WHERE a.ticker = p.ticker
             AND   a.date   = p.date
             AND   a.prediction_type = p.prediction_type
         )
-    """, (target_date,)).fetchall()
+    """).fetchall()
     conn.close()
+
+    preds = [
+        r for r in candidates
+        if add_trading_days(r["pred_date"], r["horizon_days"]) <= target_date
+    ]
 
     if not preds:
         logger.info("No matured swing predictions to score for %s", target_date)

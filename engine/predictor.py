@@ -11,6 +11,7 @@ from config import (SCORE_WEIGHT_TECHNICAL, SCORE_WEIGHT_FUNDAMENTAL,
 from engine.db import get_conn
 from engine.indicators import get_latest_indicators
 from engine.fetcher import load_fundamentals
+from engine.calendar_utils import is_trading_day
 
 logger = logging.getLogger(__name__)
 
@@ -276,6 +277,10 @@ def _strategy_alignment(strategy, signals):
 # ── Save prediction ───────────────────────────────────────────────────────────
 
 def _save(result):
+    if not is_trading_day(result["date"]):
+        logger.info("Not a trading day — prediction for %s %s computed but not saved",
+                    result["ticker"], result["date"])
+        return
     conn = get_conn()
     conn.execute("""
         INSERT INTO predictions
