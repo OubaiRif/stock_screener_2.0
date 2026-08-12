@@ -105,7 +105,7 @@ Each night after market close, `score_predictions()` compares stored `price_mid`
 **Coin-flip baseline**: direction accuracy is shown alongside "(coin-flip baseline: 50%)" as static reference text. Buy-and-hold up-days (% of trading days the ticker closed up over the same window) are computed per-ticker from price_history and shown on per-ticker cards.
 
 ### swing maturation scoring
-Swing predictions score when `prediction_date + horizon_days ≤ target_date` (calendar-day approximation of trading days — noted as acceptable given the typical 5–20 day horizons involved). Direction is scored as BULLISH correct if the matured close exceeds the close on the prediction date — not vs the day before maturation, since the horizon is days, not overnight. The NOT EXISTS dedup guard prevents double-scoring.
+Swing predictions score when `prediction_date + horizon_days ≤ target_date` (trading days, via the NYSE calendar from `pandas_market_calendars`). Direction is scored as BULLISH correct if the matured close exceeds the close on the prediction date — not vs the day before maturation, since the horizon is days, not overnight. The NOT EXISTS dedup guard prevents double-scoring.
 
 ---
 
@@ -121,4 +121,10 @@ Swing predictions score when `prediction_date + horizon_days ≤ target_date` (c
 
 **XGBoost retraining lag**: models are retrained nightly, but a sharp intraday regime break (crash, halt, squeeze) will not be reflected until the next training run. The MAE gate and ATR clamp limit the damage but do not eliminate it. The ADIL/TPET case (July 2026) is the canonical example: direction accuracy passed at 54–55%, but price targets were 22–194% stale.
 
-**Calendar-day swing maturation**: swing predictions mature on calendar days, not trading days. A 5-day swing prediction made on a Friday matures the following Wednesday (5 calendar days), not the following Friday (5 trading days). The error is small for short horizons but grows for trend predictions (20 days = ~4 trading weeks vs ~3 calendar weeks).
+**Indicator library change (2026-08-12)**: technical indicators were computed with `pandas_ta` through 2026-07-21 and with the `ta` library from 2026-08-13 onward. The two use different smoothing conventions, so RSI, ADX, Stochastic and Williams %R values are not exactly comparable across that boundary (observed differences: RSI ~2.3 points, ADX ~0.03, Williams %R ~6 points on the same date and data). Close-derived trend indicators (EMA, MACD, Bollinger) agree to within ~0.3.
+
+**Technical layer non-functional, 2026-07-22 to 2026-08-12**: `pandas_ta` became uninstallable after a Python 3.14 / numpy 2.x environment upgrade. The import was wrapped in a try/except that set an availability flag, and when the flag was false the indicator routine returned the raw price frame, which was then written to the database as rows of NULLs. The technical score consequently defaulted to exactly 50.0 for every ticker, producing NEUTRAL signals at 0% confidence across the entire watchlist. Predictions generated in this window carry no technical component and should be excluded from any evaluation of signal quality. The failure was silent — no error was raised — and was found only because the naive-persistence baseline made the resulting accuracy figures implausible.
+
+**Run timing before 2026-08-13**: the nightly job was scheduled at 21:15 Europe/Tbilisi, which is 13:15 US Eastern — roughly three hours before the market close. Prices, indicators and predictions recorded before this date were therefore computed from intraday snapshots rather than settled closing prices. The schedule now runs at 17:00 America/New_York, one hour after the close.
+
+**Single-date indicator artifact (2026-07-21)**: `rel_volume` and `obv` for that date were computed against a malformed rolling window, producing values roughly 15-20x too small (rel_volume 0.01-0.12 against a normal range of 0.6-1.4). The date has been recomputed. No other date is affected, and the underlying volume data in `price_history` was never wrong.
