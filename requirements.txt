@@ -7,3 +7,5 @@ xgboost>=2.0
 streamlit>=1.35
 plotly>=5.22
 holidays>=0.46
+huggingface_hub==1.27.0
+ta==0.11.0

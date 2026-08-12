@@ -1,17 +1,15 @@
 """
-engine/indicators.py — Computes all technical indicators using pandas-ta.
+engine/indicators.py — Computes all technical indicators using the `ta` library.
 Reads from price_history, writes to indicators table.
 """
 import logging, sys, os
 from datetime import datetime
 
 import pandas as pd
-try:
-    import pandas_ta as ta
-    PANDAS_TA_AVAILABLE = True
-except ImportError:
-    ta = None
-    PANDAS_TA_AVAILABLE = False
+from ta.trend import EMAIndicator, MACD, ADXIndicator
+from ta.volume import OnBalanceVolumeIndicator
+from ta.momentum import RSIIndicator, StochasticOscillator, WilliamsRIndicator
+from ta.volatility import BollingerBands, AverageTrueRange
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -28,8 +26,6 @@ logger = logging.getLogger(__name__)
 
 
 def compute_indicators(ticker: str, df: pd.DataFrame = None) -> pd.DataFrame:
-    if not PANDAS_TA_AVAILABLE:
-        return df if df is not None else pd.DataFrame()
     """
     Compute all indicators for a ticker.
     If df is None, loads from DB. Returns df with indicator columns appended.
@@ -43,57 +39,47 @@ def compute_indicators(ticker: str, df: pd.DataFrame = None) -> pd.DataFrame:
         logger.warning("Not enough data to compute indicators for %s", ticker)
         return df
 
-    # ── Rename for pandas-ta compatibility (needs Title Case) ────────────────
+    # ── Normalize to Title Case for consistent column access below ───────────
     df = df.copy()
     for col in ["Open", "High", "Low", "Close", "Volume"]:
         if col.lower() in df.columns:
             df.rename(columns={col.lower(): col}, inplace=True)
 
     # ── Trend indicators ──────────────────────────────────────────────────────
-    df[f"ema_{EMA_SHORT}"]  = ta.ema(df["Close"], length=EMA_SHORT)
-    df[f"ema_{EMA_MID}"]    = ta.ema(df["Close"], length=EMA_MID)
-    df[f"ema_{EMA_LONG}"]   = ta.ema(df["Close"], length=EMA_LONG)
+    df[f"ema_{EMA_SHORT}"]  = EMAIndicator(df["Close"], window=EMA_SHORT).ema_indicator()
+    df[f"ema_{EMA_MID}"]    = EMAIndicator(df["Close"], window=EMA_MID).ema_indicator()
+    df[f"ema_{EMA_LONG}"]   = EMAIndicator(df["Close"], window=EMA_LONG).ema_indicator()
 
-    macd_df = ta.macd(df["Close"], fast=MACD_FAST, slow=MACD_SLOW, signal=MACD_SIGNAL)
-    if macd_df is not None and not macd_df.empty:
-        # pandas-ta MACD output order: MACD, MACDh (histogram), MACDs (signal)
-        cols = list(macd_df.columns)
-        macd_col   = next((c for c in cols if "MACD_" in c and "MACDh" not in c and "MACDs" not in c), cols[0])
-        hist_col   = next((c for c in cols if "MACDh" in c), cols[1])
-        signal_col = next((c for c in cols if "MACDs" in c), cols[2])
-        df["macd"]        = macd_df[macd_col]
-        df["macd_hist"]   = macd_df[hist_col]
-        df["macd_signal"] = macd_df[signal_col]
+    macd_ind = MACD(df["Close"], window_slow=MACD_SLOW, window_fast=MACD_FAST, window_sign=MACD_SIGNAL)
+    df["macd"]        = macd_ind.macd()
+    df["macd_signal"] = macd_ind.macd_signal()
+    df["macd_hist"]   = macd_ind.macd_diff()
 
-    adx_df = ta.adx(df["High"], df["Low"], df["Close"], length=ADX_PERIOD)
-    if adx_df is not None and not adx_df.empty:
-        df["adx"] = adx_df.iloc[:, 0]   # ADX column
+    df["adx"] = ADXIndicator(df["High"], df["Low"], df["Close"], window=ADX_PERIOD).adx()
 
-    df["obv"]     = ta.obv(df["Close"], df["Volume"])
-    df["obv_ema"] = ta.ema(df["obv"], length=OBV_EMA)
+    df["obv"]     = OnBalanceVolumeIndicator(df["Close"], df["Volume"]).on_balance_volume()
+    df["obv_ema"] = EMAIndicator(df["obv"], window=OBV_EMA).ema_indicator()
 
     # ── Oscillators / Mean reversion ─────────────────────────────────────────
-    df["rsi"] = ta.rsi(df["Close"], length=RSI_PERIOD)
+    df["rsi"] = RSIIndicator(df["Close"], window=RSI_PERIOD).rsi()
 
-    bb_df = ta.bbands(df["Close"], length=BB_PERIOD, std=BB_STD)
-    if bb_df is not None and not bb_df.empty:
-        df["bb_lower"] = bb_df.iloc[:, 0]
-        df["bb_mid"]   = bb_df.iloc[:, 1]
-        df["bb_upper"] = bb_df.iloc[:, 2]
-        df["bb_pct_b"] = bb_df.iloc[:, 4] if bb_df.shape[1] > 4 else None
+    bb_ind = BollingerBands(df["Close"], window=BB_PERIOD, window_dev=BB_STD)
+    df["bb_lower"] = bb_ind.bollinger_lband()
+    df["bb_mid"]   = bb_ind.bollinger_mavg()
+    df["bb_upper"] = bb_ind.bollinger_hband()
+    df["bb_pct_b"] = bb_ind.bollinger_pband()
 
     # Z-score of close vs rolling mean
     roll_mean = df["Close"].rolling(ZSCORE_WINDOW).mean()
     roll_std  = df["Close"].rolling(ZSCORE_WINDOW).std()
     df["zscore"] = (df["Close"] - roll_mean) / roll_std
 
-    stoch_df = ta.stoch(df["High"], df["Low"], df["Close"], k=STOCH_K, d=STOCH_D)
-    if stoch_df is not None and not stoch_df.empty:
-        df["stoch_k"] = stoch_df.iloc[:, 0]
-        df["stoch_d"] = stoch_df.iloc[:, 1]
+    stoch_ind = StochasticOscillator(df["High"], df["Low"], df["Close"], window=STOCH_K, smooth_window=STOCH_D)
+    df["stoch_k"] = stoch_ind.stoch()
+    df["stoch_d"] = stoch_ind.stoch_signal()
 
-    df["williams_r"] = ta.willr(df["High"], df["Low"], df["Close"], length=WILLIAMS_R)
-    df["atr"]        = ta.atr(df["High"], df["Low"], df["Close"], length=ATR_PERIOD)
+    df["williams_r"] = WilliamsRIndicator(df["High"], df["Low"], df["Close"], lbp=WILLIAMS_R).williams_r()
+    df["atr"]        = AverageTrueRange(df["High"], df["Low"], df["Close"], window=ATR_PERIOD).average_true_range()
 
     # ── Volume context ────────────────────────────────────────────────────────
     avg_vol_20       = df["Volume"].rolling(20).mean()
@@ -151,6 +137,9 @@ def save_indicators(ticker: str, df: pd.DataFrame) -> int:
     for date, row in df.iterrows():
         date_str = date.strftime("%Y-%m-%d") if hasattr(date, "strftime") else str(date)
         vals = {db_col: _safe(row.get(src_col)) for src_col, db_col in col_map.items()}
+        if all(v is None for v in vals.values()):
+            logger.error("Refusing to write all-NULL indicator row for %s on %s", ticker, date_str)
+            continue
         db_cols    = ["ticker", "date"] + list(vals.keys())
         db_vals    = [ticker, date_str] + list(vals.values())
         placeholders = ", ".join(["?"] * len(db_vals))
