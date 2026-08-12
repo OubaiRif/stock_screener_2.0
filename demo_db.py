@@ -241,6 +241,11 @@ def init_schema():
     )""")
 
     cur.execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_accuracy_unique
+    ON accuracy_log(ticker, date, prediction_type)
+    """)
+
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS gold_swing_cache (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         computed_at TEXT NOT NULL,

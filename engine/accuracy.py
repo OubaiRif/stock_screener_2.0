@@ -42,33 +42,52 @@ def score_predictions(target_date: str = None) -> list:
 
 
 def _score_next_day(target_date: str) -> list:
-    """Score next_day predictions made for target_date."""
+    """
+    Score all next_day predictions with date <= target_date that haven't been
+    scored yet. Catches up on any days the app wasn't run (mirrors the
+    NOT EXISTS pattern in _score_swing_matured).
+    """
     conn = get_conn()
     preds = conn.execute("""
-        SELECT p.ticker, p.prediction_type, p.price_mid, p.signal,
-               p.composite_score, s.strategy
+        SELECT p.ticker, p.prediction_type, p.date AS pred_date, p.price_mid,
+               p.signal, p.composite_score, s.strategy
         FROM   predictions p
         JOIN   stocks s ON s.ticker = p.ticker
-        WHERE  p.date = ?
-        AND    p.prediction_type = 'next_day'
+        WHERE  p.prediction_type = 'next_day'
         AND    p.price_mid IS NOT NULL
+        AND    p.date <= ?
+        AND    NOT EXISTS (
+            SELECT 1 FROM accuracy_log a
+            WHERE a.ticker = p.ticker
+            AND   a.date   = p.date
+            AND   a.prediction_type = p.prediction_type
+        )
     """, (target_date,)).fetchall()
     conn.close()
 
     if not preds:
-        logger.info("No next_day predictions found for %s", target_date)
+        logger.info("No next_day predictions to score up to %s", target_date)
         return []
 
-    tickers  = list({r["ticker"] for r in preds})
-    actuals  = _fetch_actuals(tickers, target_date)
+    logger.info("Scoring %d next_day predictions up to %s", len(preds), target_date)
+
+    # Actuals depend on each prediction's own date, not the outer target_date,
+    # since a catch-up run can span many distinct prediction dates.
+    pred_dates = list({r["pred_date"] for r in preds})
+    actuals_by_date = {
+        d: _fetch_actuals([r["ticker"] for r in preds if r["pred_date"] == d], d)
+        for d in pred_dates
+    }
+
     results  = []
     conn     = get_conn()
 
     for pred in preds:
-        ticker = pred["ticker"]
-        actual = actuals.get(ticker)
+        ticker    = pred["ticker"]
+        pred_date = pred["pred_date"]
+        actual    = actuals_by_date[pred_date].get(ticker)
         if actual is None:
-            logger.debug("No actual close for %s on %s", ticker, target_date)
+            logger.debug("No actual close for %s on %s", ticker, pred_date)
             continue
 
         actual_close = actual["close"]
@@ -79,7 +98,7 @@ def _score_next_day(target_date: str) -> list:
 
         error_pct = abs(actual_close - predicted) / actual_close * 100
 
-        prev_close = _get_prev_close(ticker, target_date)
+        prev_close = _get_prev_close(ticker, pred_date)
         naive_error_pct = (
             abs(actual_close - prev_close) / actual_close * 100
             if prev_close else None
@@ -101,7 +120,7 @@ def _score_next_day(target_date: str) -> list:
             SET actual_close=?, actual_high=?, actual_low=?
             WHERE ticker=? AND date=? AND prediction_type=?
         """, (actual_close, actual_high, actual_low,
-              ticker, target_date, pred["prediction_type"]))
+              ticker, pred_date, pred["prediction_type"]))
 
         conn.execute("""
             INSERT INTO accuracy_log
@@ -110,7 +129,7 @@ def _score_next_day(target_date: str) -> list:
             VALUES (?,?,?,?,?,?,?,?,?)
             ON CONFLICT DO NOTHING
         """, (
-            ticker, target_date, pred["prediction_type"],
+            ticker, pred_date, pred["prediction_type"],
             round(predicted, 4), round(actual_close, 4),
             round(error_pct, 3), signal, signal_correct,
             round(naive_error_pct, 3) if naive_error_pct is not None else None
@@ -118,7 +137,7 @@ def _score_next_day(target_date: str) -> list:
 
         result = {
             "ticker":           ticker,
-            "date":             target_date,
+            "date":             pred_date,
             "prediction_type":  pred["prediction_type"],
             "strategy":         pred["strategy"],
             "predicted":        round(predicted, 4),
