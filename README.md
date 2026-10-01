@@ -1,10 +1,10 @@
-# 📈 Stock Screener 2.0
+# 📈 Stock Screener 2.5
 
 A full-stack equity research and portfolio management platform built entirely in Python. Combines real-time market data, macroeconomic indicators, NLP sentiment analysis, and XGBoost machine learning into a multi-page interactive dashboard.
 
-**[🎯 Live Demo →](https://your-streamlit-url.streamlit.app)** &nbsp;|&nbsp; **[⬇ Download & Run Locally](#installation)**
+**[🎯 Live Demo →](https://stock-screener-2.streamlit.app/)** &nbsp;|&nbsp; **[⬇ Download & Run Locally](#installation)**
 
-> Demo mode is read-only. Changes reset when you close the tab. Download the full app for persistent portfolio tracking.
+> Demo mode is read-only and uses a sanitized sample database. Changes reset when you close the tab. Download the full app for persistent portfolio tracking with your own data.
 
 ---
 
@@ -56,7 +56,7 @@ A full-stack equity research and portfolio management platform built entirely in
 | 🎯 Trading Assistant | Entry/exit analyzer, ATR-based trade calculator, exit checklist |
 | 💼 Portfolio | P&L tracker, allocation chart, position suggestions, account value |
 | 📓 Journal | Auto trade log, Fidelity CSV import, manual entry, CSV export |
-| 🎲 Accuracy | Prediction scoring, direction accuracy, per-ticker breakdown |
+| 🎲 Accuracy | Two-horizon prediction scoring, direction accuracy, per-ticker breakdown |
 | 📉 Backtesting | Strategy vs buy-and-hold comparison, configurable parameters |
 
 ---
@@ -65,22 +65,23 @@ A full-stack equity research and portfolio management platform built entirely in
 
 | Layer | Technology |
 |-------|-----------|
-| **Language** | Python 3.12 |
+| **Language** | Python 3.10+ (developed on 3.14) |
 | **Dashboard** | Streamlit |
 | **Charts** | Plotly |
-| **Data** | yfinance, FRED API, NewsAPI |
-| **Indicators** | pandas-ta (RSI, MACD, BB, ATR, EMA, Williams %R, Z-Score, OBV) |
-| **ML Model** | XGBoost (price regression + direction classification) |
-| **Sentiment** | FinBERT via HuggingFace Transformers |
+| **Data** | yfinance, FRED data, NewsAPI (optional) |
+| **Indicators** | `ta` (RSI, MACD, BB, ATR, EMA, Williams %R, Z-Score, OBV) |
+| **ML Model** | XGBoost (price regression + direction classification), with regime filters and a naive-persistence baseline for comparison |
+| **Sentiment** | FinBERT via HuggingFace Inference API (`huggingface_hub`) |
+| **Calendar** | `pandas_market_calendars` — predictions and swing maturation keyed to real NYSE trading days, not calendar days |
 | **Database** | SQLite |
-| **Data Layer** | pandas, numpy |
+| **Data Layer** | pandas, numpy, scikit-learn |
 
 ---
 
 ## Architecture
 
 ```
-stock_screener_2.0/
+stock_screener_2.5/
 │
 ├── dashboard.py              # Home page
 ├── pages/                    # 9 additional pages
@@ -102,16 +103,20 @@ stock_screener_2.0/
 ├── engine/                   # Data & analytics engine
 │   ├── db.py                 # SQLite connection and schema
 │   ├── fetcher.py            # yfinance OHLCV + fundamentals
-│   ├── indicators.py         # Technical indicator computation
+│   ├── indicators.py         # Technical indicator computation (`ta` library)
+│   ├── calendar_utils.py     # NYSE trading-day calendar (vs. calendar-day) arithmetic
 │   ├── predictor.py          # Composite signal (technical + fundamental + sentiment)
-│   ├── ml_predictor.py       # XGBoost model training and inference
-│   ├── sentiment.py          # FinBERT + NewsAPI + StockTwits
+│   ├── ml_predictor.py       # XGBoost model training and inference, with regime filters
+│   ├── sentiment.py          # FinBERT (HF Inference API) + NewsAPI + StockTwits
 │   ├── strategy_advisor.py   # Rule-based strategy assignment
 │   ├── backtester.py         # Historical strategy backtesting
-│   ├── accuracy.py           # Prediction scoring and accuracy tracking
+│   ├── accuracy.py           # Two-horizon prediction scoring and accuracy tracking
 │   ├── etf_signals.py        # Macro-driven ETF signal computation
 │   ├── gold_signals.py       # Gold-specific position and signal logic
 │   └── prices.py             # Pre/after-hours price fetching
+│
+├── tools/
+│   └── debug.py
 │
 ├── config.py                 # Central configuration (API keys, paths, params)
 ├── utils.py                  # Shared CSS design system, color tokens, helpers
@@ -134,8 +139,10 @@ NewsAPI + StockTwits ──→ FinBERT ──→ sentiment ┤
                                                 ↑
 yfinance fundamentals ──→ fundamentals ─────────┘
                                                 ↓
-XGBoost model ──→ blended signal ──→ composite score (0–100)
+XGBoost model (regime-filtered) ──→ blended signal ──→ composite score (0–100)
 ```
+
+Predictions and swing-trade maturation are evaluated against the real NYSE trading calendar (`calendar_utils.py`), not plain calendar-day arithmetic.
 
 ---
 
@@ -145,53 +152,51 @@ XGBoost model ──→ blended signal ──→ composite score (0–100)
 - Python 3.10+
 - Git
 
-### Linux / macOS
+### Manual setup (all platforms)
 
 ```bash
-git clone https://github.com/OubaiRif/stock-screener-2.0.git
-cd stock-screener-2.0
-bash setup.sh
-bash launch.sh
-```
-
-### Windows
-
-```bat
-git clone https://github.com/OubaiRif/stock-screener-2.0.git
-cd stock-screener-2.0
-setup_windows.bat
-```
-
-### Manual setup (any OS)
-
-```bash
-git clone https://github.com/OubaiRif/stock-screener-2.0.git
-cd stock-screener-2.0
+git clone -b stock-screener-2.5 https://github.com/OubaiRif/stock_screener_2.0.git
+cd stock_screener_2.0
 python3 -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+cp .env.example .env            # then add your HuggingFace key (see Configuration)
 python3 run.py init
 streamlit run dashboard.py
+```
+
+Then open [http://localhost:8501](http://localhost:8501) in your browser.
+
+### Linux / macOS (scripted)
+
+```bash
+git clone -b stock-screener-2.5 https://github.com/OubaiRif/stock_screener_2.0.git
+cd stock_screener_2.0
+bash setup.sh
+bash launch.sh
 ```
 
 ---
 
 ## Configuration
 
-Edit `config.py` to set your API keys:
+Copy `.env.example` to `.env` and fill in:
 
-```python
-# Free tier — 100 requests/day
-NEWS_API_KEY = "your_newsapi_key"   # https://newsapi.org/register
+```bash
+HF_API_KEY=your_huggingface_api_key_here
 ```
 
+Get a free key at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens). This powers FinBERT sentiment via the HuggingFace Inference API — without it, sentiment analysis silently falls back to a simpler keyword-based method.
+
+Optional, in `config.py`:
+```python
+NEWS_API_KEY = "your_newsapi_key"   # https://newsapi.org/register — free tier, 100 requests/day
+```
 All other data sources (yfinance, FRED, StockTwits) require no API key.
 
 ---
 
 ## First Run
-
-After installation:
 
 ```bash
 # Add tickers to watchlist
@@ -204,17 +209,19 @@ python3 run.py nightly
 bash launch.sh
 ```
 
-Then open [http://localhost:8501](http://localhost:8501) in your browser.
-
 ---
 
-## Nightly Automation (Linux/macOS)
+## Nightly Automation
 
+The pipeline (`python3 run.py nightly`) is meant to run once per trading day, after NYSE close, to refresh data, retrain models, and generate predictions.
+
+**Option A — cron (Linux/macOS):**
 ```bash
 bash setup_cron.sh
 ```
+Installs a cron job at 21:15 UTC (safely after the 21:00 UTC / 4PM ET close), Mon–Fri, regardless of your local timezone.
 
-Schedules `python3 run.py nightly` at 6PM daily to refresh data, retrain models, and generate predictions after market close.
+**Option B — systemd user timer (Linux):** more robust for a machine that sleeps/suspends irregularly, since systemd catches up missed runs. Not included as a script here — ask if you want a template unit file.
 
 ---
 
@@ -226,20 +233,21 @@ To run in demo mode (read-only, session-based):
 DEMO_MODE=true streamlit run dashboard.py
 ```
 
-Uses `demo_screener.db` with sample data. All writes are session-only and reset on tab close.
+Uses `demo_screener.db` with sample data. All writes are session-only and reset on tab close. For a Streamlit Cloud deployment, set `DEMO_MODE = true` in `.streamlit/secrets.toml` instead.
 
 ---
 
 ## Skills Demonstrated
 
-- **Data Engineering** — ETL pipeline from 5 data sources into a unified SQLite schema
-- **Machine Learning** — XGBoost regression + classification with walk-forward validation
-- **NLP** — FinBERT transformer model for financial sentiment analysis
+- **Data Engineering** — ETL pipeline from multiple data sources into a unified SQLite schema
+- **Machine Learning** — XGBoost regression + classification with regime filters and a naive-persistence baseline for honest comparison
+- **NLP** — FinBERT sentiment analysis via HuggingFace Inference API
 - **Data Visualization** — 10-page interactive Plotly/Streamlit dashboard
-- **Database Design** — 15-table normalized SQLite schema with migration tooling
-- **API Integration** — yfinance, FRED, NewsAPI, StockTwits, timeapi.io
-- **Software Architecture** — Modular design with shared core layer, no code duplication
-- **Python** — pandas, numpy, scikit-learn, XGBoost, HuggingFace transformers
+- **Database Design** — Normalized SQLite schema with migration tooling
+- **Calendar-Aware Time Series** — NYSE trading-day arithmetic for predictions and swing maturation, not naive calendar-day math
+- **API Integration** — yfinance, FRED, NewsAPI, StockTwits, HuggingFace
+- **Software Architecture** — Modular design with a shared core layer, no code duplication
+- **Python** — pandas, numpy, scikit-learn, XGBoost, HuggingFace Hub
 
 ---
 
